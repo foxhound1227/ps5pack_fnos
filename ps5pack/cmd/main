@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# PS5 AMPR LZ4 Compressor Lifecycle Controller
+# ==============================================================================
+
+LOG_FILE="${TRIM_PKGVAR}/app.log"
+PID_FILE="${TRIM_PKGVAR}/app.pid"
+APP_DIR="${TRIM_APPDEST}/server"
+SOCKET_PATH="${TRIM_APPDEST}/app.sock"
+
+# 自动发现 Python 3 环境（优先 python3.12 或 fnOS 官方 python 包）
+if [ -d "/var/apps/python312/target/bin" ]; then
+    export PATH="/var/apps/python312/target/bin:$PATH"
+fi
+
+PY="python3"
+if command -v python3.12 >/dev/null 2>&1; then
+    PY="python3.12"
+elif command -v python3 >/dev/null 2>&1; then
+    PY="python3"
+fi
+
+log_msg() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "${LOG_FILE}"
+}
+
+check_process() {
+    local pid="$1"
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+status_process() {
+    if [ -f "${PID_FILE}" ]; then
+        local pid
+        pid=$(head -n 1 "${PID_FILE}" | tr -d '[:space:]')
+        if check_process "${pid}"; then
+            return 0
+        fi
+        rm -f "${PID_FILE}"
+    fi
+    return 1
+}
+
+start_process() {
+    if status_process; then
+        log_msg "服务已在运行中"
+        return 0
+    fi
+
+    log_msg "正在启动 PS5 游戏压缩服务..."
+    log_msg "工作目录: ${APP_DIR}"
+    log_msg "Python 解释器: $($PY --version 2>&1 || echo $PY)"
+    log_msg "统一网关 Socket: ${SOCKET_PATH}"
+
+    # 清理旧的遗留 socket
+    rm -f "${SOCKET_PATH}"
+
+    cd "${APP_DIR}" || exit 1
+    SOCKET_PATH="${SOCKET_PATH}" nohup $PY main.py \
+        --socket "${SOCKET_PATH}" \
+        --data "${TRIM_PKGVAR}" \
+        >> "${LOG_FILE}" 2>&1 &
+    
+    local new_pid=$!
+    echo "${new_pid}" > "${PID_FILE}"
+    log_msg "服务已在后台启动 (PID: ${new_pid})"
+
+    # 检查启动状态
+    sleep 1
+    if check_process "${new_pid}"; then
+        chmod 777 "${SOCKET_PATH}" 2>/dev/null || true
+        return 0
+    else
+        log_msg "❌ 服务启动后立即退出，错误信息如下："
+        tail -n 20 "${LOG_FILE}" >> "${LOG_FILE}"
+        if [ -n "${TRIM_TEMP_LOGFILE:-}" ]; then
+            tail -n 15 "${LOG_FILE}" > "${TRIM_TEMP_LOGFILE}"
+        fi
+        return 1
+    fi
+}
+
+stop_process() {
+    log_msg "正在停止 PS5 压缩服务..."
+
+    if [ -f "${PID_FILE}" ]; then
+        local pid
+        pid=$(head -n 1 "${PID_FILE}" | tr -d '[:space:]')
+
+        if check_process "${pid}"; then
+            log_msg "发送 TERM 信号给 PID: ${pid}..."
+            kill -TERM "${pid}" 2>/dev/null || true
+
+            local count=0
+            while check_process "${pid}" && [ $count -lt 10 ]; do
+                sleep 1
+                count=$((count + 1))
+            done
+
+            if check_process "${pid}"; then
+                log_msg "进程未响应，强制发送 KILL 信号..."
+                kill -KILL "${pid}" 2>/dev/null || true
+            fi
+        fi
+
+        rm -f "${PID_FILE}"
+    fi
+
+    rm -f "${SOCKET_PATH}"
+    log_msg "服务已停止"
+    return 0
+}
+
+case "$1" in
+    start)
+        start_process
+        exit $?
+        ;;
+    stop)
+        stop_process
+        exit $?
+        ;;
+    status)
+        if status_process; then
+            exit 0
+        else
+            exit 3
+        fi
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|status}" >&2
+        exit 1
+        ;;
+esac

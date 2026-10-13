@@ -1,0 +1,114 @@
+# 通用 PS5 资产 profile — 未 trace 过的新游戏用这个
+# default_action = "compress" 把所有文件尝试压
+# auto_loose_* 自动 fallback：节省 <5% 自动转 loose（不浪费 CPU）
+# 最后一条 rule 把 runtime/loader/签名相关的目录 loose 兜底安全
+
+[pack]
+index_name = "ampr_assets.index"
+pack_pattern = "ampr_assets-{group}-lane{lane:02d}-vol{volume:02d}-{id:03d}.pak"
+
+# ⚠️ 默认 compress！摸不清游戏的最佳起手姿势
+default_action = "compress"
+default_block_size = "128KiB"
+
+# f_iosize 64 KiB 在 PS5 目标文件系统
+io_page_size = "64KiB"
+payload_alignment = "64KiB"
+chunk_alignment = "64B"
+
+workers = 4
+compression_mode = "hc"          # fast | hc
+compression_level = 9
+acceleration = 1
+deduplicate = true
+deduplicate_scope = "lane"
+deduplicate_streaming = false
+min_savings_bytes = 64
+min_savings_ratio = 0.01
+
+io_neutral_min_savings_bytes = "8KiB"
+io_neutral_min_savings_ratio = 0.125
+
+# 关键：auto_loose 自动跳过已压缩格式（dds/ktx/wem/mp4/zip/pak）的节省 <5% 的
+auto_loose_large_files = true
+auto_loose_hot_files = false
+auto_loose_min_file_size = "64MiB"
+auto_loose_sample_blocks = 32
+auto_loose_sample_bytes = "16MiB"
+auto_loose_min_savings_ratio = 0.05
+auto_loose_max_raw_ratio = 0.90
+
+preserve_mtime = true
+validate_index_metadata = true
+
+[runtime]
+decoded_cache_bytes = "128MiB"
+physical_cache_bytes = "64MiB"
+workers = 4
+latency_reserve_workers = 1
+
+[groups.assets]
+pack_count = 4
+assignment = "balanced"
+max_pack_size = "16GiB"
+stripe_large_files = false
+
+# 1) 先 compress 兜底：所有文件尝试 pack（除非被下面 loose 命中）
+#    group = "assets" + [groups.assets] pack_count=4 让产物拆 4 lane（之前 default group 单 lane 是死配置）
+[[rule]]
+action = "compress"
+group = "assets"
+include = ["**"]
+layout = "mixed"
+
+# 2) 再 loose 安全网（最后一条 rule 兜底）：
+# - sce_module/sce_sys 是 PS5 OS metadata，签名敏感，混不得
+# - fakelib 是 PS5 越狱用的假库目录（PlayGo / Ampr stub）
+# - trophy2/uds/nptitle.dat/rds 是签名相关
+# - 已压缩格式 (png/jpg/dds/ktx/at9/wem/mp4/otf/ttf/xml/json/txt/dat) 再 LZ4 无收益，
+#   显式列比 auto_loose 更安全（不依赖 sample 结果）
+# - re_chunk_xxx.pak 不在这里排除 —— pack 端 auto_loose_min_savings_ratio=0.05 会自动跳过压不动的
+[[rule]]
+action = "loose"
+group = "assets"
+include = [
+    # 签名敏感的容器/入口
+    "**/eboot.bin",
+    "**/*.elf",
+    "**/*.self",
+    "**/*.prx",
+    "**/*.sprx",
+    # PS5 OS metadata + 假库 整个目录
+    "**/sce_module/**",
+    "**/sce_sys/**",
+    "**/fakelib/**",
+    # 其他不该动的目录
+    "**/system/**",
+    "**/decrypted/**",
+    "**/mods/**",
+    "**/save/**",
+    "**/_DUPLEX_/**",
+    "**/trophy2/**",
+    "**/uds/**",
+    # 已压缩格式 / 配置 / 数据（再 LZ4 无收益）
+    "**/*.png",
+    "**/*.jpg",
+    "**/*.jpeg",
+    "**/*.dds",
+    "**/*.ktx",
+    "**/*.at9",
+    "**/*.wem",
+    "**/*.mp4",
+    "**/*.m4a",
+    "**/*.ogg",
+    "**/*.otf",
+    "**/*.ttf",
+    "**/*.xml",
+    "**/*.json",
+    "**/*.txt",
+    "**/*.dat",
+    "**/*.bak",
+    # 签名相关 / Unity il2cpp
+    "**/nptitle.dat",
+    "**/runtime_il2cppMasterPS5.rds",
+]

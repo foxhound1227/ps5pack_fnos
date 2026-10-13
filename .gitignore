@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.env
+venv/
+ENV/
+*.egg-info/
+
+# Operating System & Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# fnOS build tool & large temporary archives
+fnpack.exe
+*.tar.gz
+*.tgz
+downloaded_engine/
+ps5pack_backup_extracted/
+trimjs_pkg/
+*.tmp
+*.log
+
+# Workspace Documentation Scratch & AI Memory
+.ai_memory/
+file_picker_docs.txt
+fnos_llms_full.txt
+fnos_docs.md
+ALL_DOCS_DECODED.md

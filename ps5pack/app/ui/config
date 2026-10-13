@@ -1,0 +1,14 @@
+{
+  ".url": {
+    "ps5pack.main": {
+      "title": "PS5游戏压缩",
+      "icon": "images/icon_{0}.png",
+      "type": "iframe",
+      "protocol": "",
+      "gatewayPrefix": "/app/ps5pack",
+      "gatewaySocket": "app.sock",
+      "url": "/app/ps5pack",
+      "allUsers": true
+    }
+  }
+}

@@ -1,0 +1,22 @@
+#!/bin/bash
+### 安装后回调钩子
+
+# 确保脚本具备执行权限
+chmod +x "${TRIM_APPDEST}/server/engine/"*.py 2>/dev/null || true
+chmod +x "${TRIM_APPDEST}/server/"*.py 2>/dev/null || true
+
+# 准备 python 与 lz4 依赖
+if [ -d "/var/apps/python312/target/bin" ]; then
+    export PATH="/var/apps/python312/target/bin:$PATH"
+fi
+
+PY="python3"
+if command -v python3.12 >/dev/null 2>&1; then
+    PY="python3.12"
+fi
+
+if ! $PY -c "import lz4" >/dev/null 2>&1; then
+    $PY -m pip install lz4 2>/dev/null || true
+fi
+
+exit 0

@@ -1,0 +1,1332 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PS5 AMPR LZ4 游戏压缩工具</title>
+  <style>
+    :root {
+      --bg-primary: #0a0e17;
+      --bg-secondary: #131c2e;
+      --bg-card: #182338;
+      --bg-input: #0f172a;
+      --border-color: #27364f;
+      --accent: #0070d1;
+      --accent-glow: #0088ff;
+      --ps-blue: #00439c;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      background: linear-gradient(180deg, #16243d 0%, var(--bg-secondary) 100%);
+      border-bottom: 1px solid var(--border-color);
+      padding: 16px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .brand-icon {
+      width: 38px;
+      height: 38px;
+      background: linear-gradient(135deg, #0070d1, #002f6c);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 15px rgba(0, 112, 209, 0.4);
+      font-weight: 800;
+      font-size: 18px;
+      color: #fff;
+    }
+    .brand-title {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    .brand-subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .user-badge {
+      font-size: 12px;
+      padding: 5px 12px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      color: var(--text-muted);
+    }
+    main {
+      flex: 1;
+      max-width: 1240px;
+      margin: 0 auto;
+      width: 100%;
+      padding: 24px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 24px;
+      box-sizing: border-box;
+    }
+    @media (max-width: 900px) {
+      main { grid-template-columns: minmax(0, 1fr); }
+    }
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      padding: 20px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+      overflow: hidden;
+    }
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      padding-bottom: 10px;
+    }
+    .card-title span { display: flex; align-items: center; gap: 8px; }
+    .form-group {
+      margin-bottom: 18px;
+    }
+    .form-label {
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #cbd5e1;
+    }
+    .form-desc {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+      line-height: 1.4;
+    }
+    .input-with-action {
+      display: flex;
+      gap: 8px;
+    }
+    input[type="text"], input[type="number"], select {
+      flex: 1;
+      background: var(--bg-input);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 9px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      outline: none;
+      transition: border 0.2s;
+    }
+    input[type="text"]:focus, select:focus {
+      border-color: var(--accent-glow);
+    }
+    .btn {
+      padding: 9px 16px;
+      border-radius: 8px;
+      border: none;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .btn-secondary {
+      background: #1e293b;
+      color: #e2e8f0;
+      border: 1px solid var(--border-color);
+    }
+    .btn-secondary:hover { background: #334155; }
+    .btn-primary {
+      background: linear-gradient(135deg, #0070d1 0%, #00509d 100%);
+      color: #fff;
+      box-shadow: 0 4px 12px rgba(0, 112, 209, 0.4);
+    }
+    .btn-primary:hover {
+      box-shadow: 0 6px 16px rgba(0, 112, 209, 0.6);
+      transform: translateY(-1px);
+    }
+    .btn-danger {
+      background: #dc2626;
+      color: #fff;
+    }
+    .btn-danger:hover { background: #b91c1c; }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none !important;
+      box-shadow: none !important;
+    }
+    .badge {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-weight: 500;
+    }
+    .badge-success { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+    .badge-warning { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+    .badge-danger { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+    .badge-info { background: rgba(0, 112, 209, 0.15); color: #60a5fa; }
+    .params-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .switch-group {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      background: var(--bg-input);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      margin-bottom: 10px;
+    }
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 40px;
+      height: 22px;
+    }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #334155;
+      transition: .3s;
+      border-radius: 22px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .3s;
+      border-radius: 50%;
+    }
+    input:checked + .slider { background-color: var(--accent); }
+    input:checked + .slider:before { transform: translateX(18px); }
+    .metrics-container {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    @media (max-width: 600px) {
+      .metrics-container { grid-template-columns: 1fr 1fr; }
+    }
+    .metric-card {
+      background: var(--bg-input);
+      border: 1px solid var(--border-color);
+      padding: 12px;
+      border-radius: 10px;
+      text-align: center;
+    }
+    .metric-label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+    .metric-val { font-size: 17px; font-weight: 700; color: #fff; }
+    .progress-wrapper {
+      margin-bottom: 18px;
+    }
+    .progress-bar-bg {
+      height: 12px;
+      background: #1e293b;
+      border-radius: 6px;
+      overflow: hidden;
+      margin-top: 6px;
+      position: relative;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #0070d1, #00d2ff);
+      width: 0%;
+      transition: width 0.3s;
+      border-radius: 6px;
+    }
+    .terminal-container {
+      background: #050811;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    .terminal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 12px;
+      background: rgba(15, 23, 42, 0.85);
+      border-bottom: 1px solid #1e293b;
+      font-size: 11px;
+      color: #94a3b8;
+    }
+    .terminal-tool-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #94a3b8;
+      cursor: pointer;
+      font-size: 11px;
+      padding: 2px 7px;
+      border-radius: 4px;
+      transition: all 0.2s;
+    }
+    .terminal-tool-btn:hover {
+      background: rgba(255, 255, 255, 0.12);
+      color: #e2e8f0;
+    }
+    .terminal-box {
+      background: transparent;
+      padding: 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      height: 200px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      color: #94a3b8;
+      line-height: 1.5;
+      min-width: 0;
+      box-sizing: border-box;
+    }
+    .terminal-box.wrap-mode .terminal-line {
+      white-space: pre-wrap;
+      word-break: break-all;
+      overflow-wrap: anywhere;
+    }
+    .terminal-box.nowrap-mode {
+      overflow-x: auto;
+    }
+    .terminal-box.nowrap-mode .terminal-line {
+      white-space: nowrap;
+    }
+    .terminal-line { margin-bottom: 2px; }
+    .terminal-line.highlight { color: #38bdf8; }
+    .terminal-line.success { color: #4ade80; }
+    .terminal-line.error { color: #f87171; }
+    .terminal-live-bar {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: #090e1e;
+      border-top: 1px solid #1e293b;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      color: #38bdf8;
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+      flex-wrap: wrap;
+    }
+    .live-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #38bdf8;
+      box-shadow: 0 0 8px #38bdf8;
+      animation: livePulse 1.5s infinite ease-in-out;
+      flex-shrink: 0;
+    }
+    .live-pills-wrap {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-width: 0;
+      flex: 1;
+    }
+    .live-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      background: rgba(56, 189, 248, 0.08);
+      border: 1px solid rgba(56, 189, 248, 0.22);
+      border-radius: 6px;
+      font-size: 11.5px;
+      color: #e0f2fe;
+      max-width: 100%;
+      word-break: break-all;
+      line-height: 1.25;
+    }
+    .live-pill.phase {
+      background: rgba(14, 165, 233, 0.18);
+      border-color: rgba(56, 189, 248, 0.45);
+      color: #38bdf8;
+      font-weight: 600;
+    }
+    .live-pill.speed {
+      background: rgba(99, 102, 241, 0.12);
+      border-color: rgba(129, 140, 248, 0.3);
+      color: #a5b4fc;
+    }
+    .live-pill.eta {
+      background: rgba(245, 158, 11, 0.12);
+      border-color: rgba(245, 158, 11, 0.3);
+      color: #fde68a;
+    }
+    .live-pill.file {
+      background: rgba(100, 116, 139, 0.15);
+      border-color: rgba(148, 163, 184, 0.25);
+      color: #94a3b8;
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    @keyframes livePulse {
+      0% { opacity: 0.3; transform: scale(0.85); box-shadow: 0 0 4px #38bdf8; }
+      50% { opacity: 1; transform: scale(1.15); box-shadow: 0 0 10px #38bdf8; }
+      100% { opacity: 0.3; transform: scale(0.85); box-shadow: 0 0 4px #38bdf8; }
+    }
+    /* 目录选择弹窗 */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .modal-dialog {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      width: 92%;
+      max-width: 680px;
+      border-radius: 14px;
+      padding: 22px;
+      box-shadow: 0 10px 35px rgba(0, 0, 0, 0.6);
+      display: flex;
+      flex-direction: column;
+      max-height: 88vh;
+    }
+    .vol-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: 8px 0;
+      align-items: center;
+    }
+    .chip-btn {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border-color);
+      color: #93c5fd;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .chip-btn:hover {
+      background: rgba(0, 112, 209, 0.25);
+      border-color: #38bdf8;
+      color: #fff;
+    }
+    .breadcrumb-bar {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 4px;
+      background: rgba(0, 0, 0, 0.25);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      margin-bottom: 8px;
+    }
+    .breadcrumb-item {
+      color: #94a3b8;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+    .breadcrumb-item:hover { color: #38bdf8; }
+    .breadcrumb-sep { color: #64748b; font-size: 10px; }
+    .file-list {
+      flex: 1;
+      max-height: 320px;
+      min-height: 180px;
+      overflow-y: auto;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      margin: 8px 0 14px 0;
+      background: var(--bg-input);
+    }
+    .file-item {
+      padding: 9px 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      font-size: 13px;
+      transition: background 0.15s;
+    }
+    .file-item:hover { background: #1e293b; color: #38bdf8; }
+  </style>
+  <script src="trim-app.js"></script>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="brand-icon">PS5</div>
+      <div>
+        <div class="brand-title">PS5 AMPR LZ4 游戏压缩工具</div>
+        <div class="brand-subtitle">高性能多分卷无损压缩 • 专为飞牛 fnOS 优化</div>
+      </div>
+    </div>
+    <div class="user-badge" id="userBadge">飞牛 OS 运行中</div>
+  </header>
+
+  <main>
+    <!-- 左侧：参数与输入控制 -->
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <div class="card">
+        <div class="card-title">
+          <span>📁 游戏目录配置</span>
+          <span id="leafStatusBadge" class="badge badge-info">等待检测</span>
+        </div>
+        
+        <!-- 源目录/单文件 -->
+        <div class="form-group">
+          <label class="form-label">
+            游戏源路径 (解包目录 或 .exfat / .img 单文件)
+            <span style="font-size: 11px; color: var(--text-muted);">解包散文件或磁盘镜像</span>
+          </label>
+          <div class="input-with-action">
+            <input type="text" id="srcInput" placeholder="例如: /vol4/.../game 或 /vol4/.../game.exfat" />
+            <button class="btn btn-secondary" onclick="openFilePicker('src')">浏览</button>
+            <button class="btn btn-secondary" onclick="checkLeaf()">检测</button>
+          </div>
+          <div class="form-desc" id="leafMessage">支持解包散文件目录，或 .exfat / .img / .iso 单文件镜像（系统将自动只读挂载并压缩）。</div>
+        </div>
+
+        <!-- 输出目录 -->
+        <div class="form-group">
+          <label class="form-label">
+            输出目录 (Output LZ4 Directory)
+            <span style="font-size: 11px; color: var(--text-muted);">存储 .pak 与部署文件</span>
+          </label>
+          <div class="input-with-action">
+            <input type="text" id="outInput" placeholder="例如: /vol1/1000/docker/PPSA_OUTPUT" />
+            <button class="btn btn-secondary" onclick="openFilePicker('out')">浏览</button>
+          </div>
+          <div class="form-desc">压缩后的 .pak 分卷和 loose 散文件将输出至此，可直接考入 PS5 /app0。</div>
+        </div>
+      </div>
+
+      <!-- 参数调节 -->
+      <div class="card">
+        <div class="card-title">
+          <span>⚙️ 压缩与性能参数</span>
+          <span style="font-size: 11px; color: var(--text-muted);">已针对 PS5 最佳实践优化</span>
+        </div>
+
+        <div class="params-grid">
+          <div class="form-group">
+            <label class="form-label">并发线程数 (Workers)</label>
+            <input type="number" id="workersInput" value="4" min="1" max="32" />
+            <div class="form-desc">默认 4 核。建议保留 1~2 核给 NAS 其他服务。</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">LZ4 压缩等级 (1~12)</label>
+            <select id="levelInput">
+              <option value="1">1 (极速档 - 占用极低)</option>
+              <option value="6">6 (平衡档)</option>
+              <option value="9" selected>9 (推荐 - 黄金高压 50% 节省)</option>
+              <option value="12">12 (极限档 - 耗时成倍增加)</option>
+            </select>
+            <div class="form-desc">默认等级 9 为速度与压缩比的最佳平衡点。</div>
+          </div>
+        </div>
+
+        <div class="params-grid">
+          <div class="form-group">
+            <label class="form-label">单卷包上限 (Max Pack Size)</label>
+            <select id="maxPackSizeInput">
+              <option value="8GiB">8 GiB</option>
+              <option value="16GiB" selected>16 GiB (官方推荐)</option>
+              <option value="32GiB">32 GiB</option>
+            </select>
+            <div class="form-desc">每个 .pak 分卷大小上限，利于多通道并发加载。</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">分流通道数 (Lanes)</label>
+            <select id="packCountInput">
+              <option value="1">1 Lane (单通道)</option>
+              <option value="4" selected>4 Lanes (推荐 4 组分卷)</option>
+            </select>
+            <div class="form-desc">将游戏资产分摊到 4 条独立 Lane 顺序读取。</div>
+          </div>
+        </div>
+
+        <div class="switch-group">
+          <div>
+            <div style="font-size: 13px; font-weight: 600;">自动补齐 Loose 启动文件</div>
+            <div style="font-size: 11px; color: var(--text-muted);">自动复制 eboot.bin / sce_module / sce_sys，<b>若关闭 PS5 会拒启！</b></div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="copyLooseSwitch" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="switch-group">
+          <div>
+            <div style="font-size: 13px; font-weight: 600;">打包完成后全量比对校验 (Verify)</div>
+            <div style="font-size: 11px; color: var(--text-muted);">解压并比对哈希，确保产物 100% 完好无损坏。</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="verifySwitch" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="switch-group">
+          <div>
+            <div style="font-size: 13px; font-weight: 600;">智能叶子目录嗅探 (Leaf Auto-Detect)</div>
+            <div style="font-size: 11px; color: var(--text-muted);">自动侦测网盘多层嵌套（如 xxx.part01/xxx）并定位真实根目录。</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="leafCheckSwitch" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div style="display: flex; gap: 12px; margin-top: 14px;">
+          <button class="btn btn-primary" id="startBtn" onclick="startPacking()" style="flex: 2;">⚡ 开始压缩与打包</button>
+          <button class="btn btn-danger" id="stopBtn" onclick="stopPacking()" style="flex: 1;" disabled>🛑 终止任务</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右侧：实时监控大屏与产物信息 -->
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <div class="card">
+        <div class="card-title">
+          <span>📊 实时监控与进度大屏</span>
+          <span id="taskStatusBadge" class="badge badge-info">空闲就绪</span>
+        </div>
+
+        <!-- 4 项指标 -->
+        <div class="metrics-container">
+          <div class="metric-card">
+            <div class="metric-label">压缩速率</div>
+            <div class="metric-val" id="metricSpeed">—</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">空间节省率</div>
+            <div class="metric-val" id="metricSaving" style="color: #34d399;">—</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">节省体积</div>
+            <div class="metric-val" id="metricSavedBytes">—</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">已用时间 / 状态</div>
+            <div class="metric-val" id="metricElapsed" style="font-size: 14px;">0s</div>
+          </div>
+        </div>
+
+        <!-- 进度条 -->
+        <div class="progress-wrapper">
+          <div style="display: flex; justify-content: space-between; font-size: 12px; color: #cbd5e1;">
+            <span id="stepDesc">等待开始任务...</span>
+            <span id="pctDesc" style="font-weight: 700;">0%</span>
+          </div>
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" id="progressBar"></div>
+          </div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 6px; display: flex; justify-content: space-between;">
+            <span>处理文件: <span id="currentFileDesc" style="color: #93c5fd;">—</span></span>
+            <span id="fileCountDesc">分卷文件: 0</span>
+          </div>
+        </div>
+
+        <!-- 终端日志与动态单行状态 -->
+        <div class="terminal-container">
+          <div class="terminal-header">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span>💻 执行日志</span>
+              <span class="badge badge-info" id="termLinesCount" style="font-size: 10px; padding: 1px 6px;">0 行</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer; user-select: none;">
+                <input type="checkbox" id="wrapLogToggle" checked onchange="toggleLogWrap(this.checked)" style="cursor: pointer;">
+                <span>自动换行</span>
+              </label>
+              <button class="terminal-tool-btn" onclick="clearTerminalLogs()" title="清屏">🧹 清屏</button>
+            </div>
+          </div>
+          <div class="terminal-box wrap-mode" id="terminalBox">
+            <div class="terminal-line">[系统] PS5 AMPR LZ4 打包控制台准备就绪...</div>
+          </div>
+          <div class="terminal-live-bar" id="terminalLiveBar">
+            <span class="live-dot" title="任务执行中实时刷新"></span>
+            <div class="live-pills-wrap" id="livePills">
+              <!-- 结构化自适应微胶囊 -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 产物列表 / 历史记录 -->
+      <div class="card">
+        <div class="card-title">
+          <span>📦 最近压缩历史</span>
+          <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;" onclick="loadHistory()">刷新</button>
+        </div>
+        <div id="historyList" style="max-height: 200px; overflow-y: auto;">
+          <div style="font-size: 12px; color: var(--text-muted); text-align: center; padding: 20px;">暂无历史记录</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- 目录选择弹窗 (纯净 NAS 视图) -->
+  <div class="modal-overlay" id="fileModal">
+    <div class="modal-dialog">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <div>
+          <h3 style="font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+            <span>📂 浏览 NAS 存储空间目录</span>
+          </h3>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+            纯净 NAS 存储空间（已隐藏系统底层 Linux 目录，直达各存储空间卷）
+          </div>
+        </div>
+        <div style="display: flex; gap: 6px;">
+          <button class="btn btn-secondary" onclick="pickNativeFolder(activePickerField)" title="呼出飞牛系统原生选择器" style="padding: 4px 10px; font-size: 12px; color: #38bdf8;">🖥️ 系统原生窗口</button>
+          <button class="btn btn-secondary" onclick="closeFilePicker()" style="padding: 4px 10px; font-size: 13px;">✕</button>
+        </div>
+      </div>
+
+      <!-- 快捷存储卷直达 -->
+      <div style="font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
+        <span>🚀 存储空间直达:</span>
+        <div class="vol-chips" id="volChipsContainer">
+          <button class="chip-btn" onclick="loadDirectory('/')">全部存储空间</button>
+          <button class="chip-btn" onclick="loadDirectory('/vol1')">存储空间 1</button>
+          <button class="chip-btn" onclick="loadDirectory('/vol2')">存储空间 2</button>
+          <button class="chip-btn" onclick="loadDirectory('/vol3')">存储空间 3</button>
+          <button class="chip-btn" onclick="loadDirectory('/vol4')">存储空间 4</button>
+        </div>
+      </div>
+
+      <!-- 手动输入/粘贴路径与前往 -->
+      <div style="display: flex; gap: 8px; margin: 8px 0 10px 0;">
+        <input type="text" id="manualBrowseInput" placeholder="输入或粘贴目录绝对路径，例如 /vol4/1000/NAS..." onkeydown="if(event.key==='Enter') jumpToManualPath()" />
+        <button class="btn btn-secondary" onclick="jumpToManualPath()">前往</button>
+      </div>
+
+      <!-- 面包屑当前路径栏 -->
+      <div class="breadcrumb-bar" id="breadcrumbBar">
+        <span class="breadcrumb-item" onclick="loadDirectory('/')">🏠 NAS 存储空间</span>
+      </div>
+
+      <!-- 目录内容列表 -->
+      <div class="file-list" id="browseItems">
+        <div style="padding: 24px; text-align: center; color: var(--text-muted);">正在加载 NAS 目录...</div>
+      </div>
+
+      <!-- 底部控制按钮 -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-secondary" onclick="browseUp()">⬆ 返回上一级</button>
+          <button class="btn btn-secondary" onclick="refreshCurrentDir()">🔄 刷新</button>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-secondary" onclick="closeFilePicker()">取消</button>
+          <button class="btn btn-primary" onclick="confirmSelectPath()">✔ 确定选择此目录</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let activePickerField = '';
+    let currentDir = '/';
+    let pollTimer = null;
+    let fnSdk = null;
+
+    // 初始化飞牛原生微应用 SDK
+    try {
+      if (typeof window.TrimApp === 'function') {
+        fnSdk = new window.TrimApp({ debug: false });
+      }
+    } catch (e) {
+      console.warn('TrimApp 初始化:', e);
+    }
+
+    // 尝试呼出飞牛 OS 原生“选择文件夹”弹窗
+    async function pickNativeFolder(field) {
+      if (!field) field = activePickerField || 'src';
+      if (fnSdk && window.parent !== window) {
+        try {
+          const title = field === 'src' ? '选择 PS5 游戏源文件夹' : '选择 LZ4 压缩输出文件夹';
+          const res = await fnSdk.pickUserFile({
+            directory: true,
+            title: title,
+            okText: '确定选择',
+            sidebarGroup: ['myFiles', 'otherShare', 'favorites']
+          });
+          if (res && res.data && res.data.length > 0) {
+            const picked = res.data[0];
+            document.getElementById(field + 'Input').value = picked;
+            saveFormCache();
+            if (field === 'src') checkLeaf();
+            closeFilePicker();
+            return true;
+          }
+        } catch (err) {
+          console.log('飞牛原生选择器未完成:', err);
+        }
+      }
+      return false;
+    }
+
+    // 动态解析应用的基础 API 前缀，适配飞牛 OS 统一网关 (/app/ps5pack)
+    function getApiUrl(endpoint) {
+      let basePath = window.location.pathname;
+      if (basePath.endsWith('/index.html')) {
+        basePath = basePath.substring(0, basePath.length - 11);
+      }
+      basePath = basePath.replace(/\/+$/, '');
+      const cleanEndpoint = endpoint.startsWith('/') ? endpoint : '/' + endpoint;
+      return basePath + cleanEndpoint;
+    }
+
+    // 格式化大小
+    function formatBytes(bytes) {
+      if (!bytes || bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return (bytes / Math.pow(k, i)).toFixed(1) + ' ' + sizes[i];
+    }
+
+    // 格式化已用耗时 (分/秒)
+    function formatElapsed(s) {
+      if (!s || s <= 0) return '0秒';
+      const sec = Math.floor(s % 60);
+      const min = Math.floor(s / 60);
+      if (min >= 60) {
+        const hour = Math.floor(min / 60);
+        const remMin = min % 60;
+        return `${hour}小时 ${remMin}分 ${sec}秒`;
+      }
+      if (min > 0) {
+        return `${min}分 ${sec}秒`;
+      }
+      return `${sec}秒`;
+    }
+
+    // 状态轮询
+    async function pollStatus() {
+      try {
+        const res = await fetch(getApiUrl('/api/status'));
+        if (!res.ok) return;
+        const data = await res.json();
+        const task = data.task;
+        
+        // 更新指标
+        document.getElementById('metricSpeed').innerText = task.speed || '—';
+        document.getElementById('metricSaving').innerText = task.saving_pct > 0 ? `${task.saving_pct}%` : '—';
+        document.getElementById('metricSavedBytes').innerText = task.saved_bytes > 0 ? formatBytes(task.saved_bytes) : '—';
+        document.getElementById('metricElapsed').innerText = formatElapsed(task.elapsed);
+        
+        document.getElementById('stepDesc').innerText = task.step || '空闲';
+        document.getElementById('pctDesc').innerText = `${task.progress || 0}%`;
+        document.getElementById('progressBar').style.width = `${task.progress || 0}%`;
+        document.getElementById('currentFileDesc').innerText = task.current_file || '—';
+        document.getElementById('fileCountDesc').innerText = `分卷: ${task.packed_files || 0} | 散文件: ${task.loose_copied || 0}`;
+
+        // 自动回填后端持久化的上次路径 (若当前为空)
+        if (data.last_paths) {
+          const srcEl = document.getElementById('srcInput');
+          const outEl = document.getElementById('outInput');
+          if (srcEl && !srcEl.value.trim() && data.last_paths.src) {
+            srcEl.value = data.last_paths.src;
+          }
+          if (outEl && !outEl.value.trim() && data.last_paths.out) {
+            outEl.value = data.last_paths.out;
+          }
+        }
+
+        // 按钮状态与徽章
+        const isRunning = !['idle', 'completed', 'failed', 'stopped'].includes(task.status);
+        document.getElementById('startBtn').disabled = isRunning;
+        document.getElementById('stopBtn').disabled = !isRunning;
+
+        const badge = document.getElementById('taskStatusBadge');
+        if (task.status === 'completed') {
+          badge.className = 'badge badge-success';
+          badge.innerText = '压缩完成';
+        } else if (task.status === 'failed') {
+          badge.className = 'badge badge-danger';
+          badge.innerText = '发生失败';
+        } else if (isRunning) {
+          badge.className = 'badge badge-warning';
+          badge.innerText = '处理中';
+        } else {
+          badge.className = 'badge badge-info';
+          badge.innerText = '空闲就绪';
+        }
+
+        // 单行实时刷新栏 (In-Place Live Line 结构化微胶囊)
+        const liveBar = document.getElementById('terminalLiveBar');
+        if (task.live_log && task.live_log.trim() && isRunning) {
+          liveBar.style.display = 'flex';
+          renderLivePills(task.live_log);
+        } else {
+          liveBar.style.display = 'none';
+        }
+
+        // 同步日志
+        fetchLogs();
+      } catch (err) {
+        console.error('获取状态失败', err);
+      }
+    }
+
+    // 转义 HTML
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    // 渲染实时胶囊徽章（自适应换行，彻底防止撑爆窗口）
+    function renderLivePills(str) {
+      const container = document.getElementById('livePills');
+      if (!container) return;
+      if (!str || !str.trim()) {
+        container.innerHTML = '';
+        return;
+      }
+      
+      const sep = str.includes(' · ') ? ' · ' : (str.includes(' | ') ? ' | ' : null);
+      const parts = sep ? str.split(sep).map(s => s.trim()).filter(Boolean) : [str.trim()];
+      
+      container.innerHTML = parts.map(part => {
+        let cls = 'live-pill';
+        if (part.includes('压缩') || part.includes('校验') || part.includes('复制')) {
+          cls += ' phase';
+        } else if (part.includes('B/s')) {
+          cls += ' speed';
+        } else if (part.includes('剩余') || part.includes('ETA')) {
+          cls += ' eta';
+        } else if (part.includes('当前') || part.includes('文件')) {
+          cls += ' file';
+        }
+        return `<span class="${cls}" title="${escapeHtml(part)}">${escapeHtml(part)}</span>`;
+      }).join('');
+    }
+
+    // 控制台自动换行切换
+    function toggleLogWrap(isWrap) {
+      const box = document.getElementById('terminalBox');
+      if (!box) return;
+      if (isWrap) {
+        box.classList.remove('nowrap-mode');
+        box.classList.add('wrap-mode');
+      } else {
+        box.classList.remove('wrap-mode');
+        box.classList.add('nowrap-mode');
+      }
+    }
+
+    // 控制台清屏
+    function clearTerminalLogs() {
+      const box = document.getElementById('terminalBox');
+      if (box) {
+        box.innerHTML = '<div class="terminal-line">[系统] 控制台日志已清空...</div>';
+      }
+      const countEl = document.getElementById('termLinesCount');
+      if (countEl) countEl.innerText = '0 行';
+    }
+
+    // 获取最新日志
+    async function fetchLogs() {
+      try {
+        const res = await fetch(getApiUrl('/api/task/logs'));
+        if (!res.ok) return;
+        const data = await res.json();
+        const box = document.getElementById('terminalBox');
+        if (data.logs && data.logs.length > 0) {
+          const countEl = document.getElementById('termLinesCount');
+          if (countEl) countEl.innerText = `${data.logs.length} 行`;
+          
+          box.innerHTML = data.logs.map(l => {
+            let cls = 'terminal-line';
+            if (l.includes('✓') || l.includes('✅') || l.includes('🎉')) cls += ' success';
+            if (l.includes('❌') || l.includes('失败') || l.includes('错误') || l.includes('⚠️')) cls += ' error';
+            if (l.includes('▶') || l.includes('🚀') || l.includes('⚡') || l.includes('🔍')) cls += ' highlight';
+            return `<div class="${cls}">${escapeHtml(l)}</div>`;
+          }).join('');
+          box.scrollTop = box.scrollHeight;
+        }
+      } catch (e) {}
+    }
+
+    // 智能检测叶子目录
+    async function checkLeaf() {
+      const path = document.getElementById('srcInput').value.trim();
+      if (!path) return alert('请先填写游戏源目录');
+      const badge = document.getElementById('leafStatusBadge');
+      badge.className = 'badge badge-warning';
+      badge.innerText = '检测中...';
+      try {
+        const res = await fetch(getApiUrl('/api/check_leaf'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path })
+        });
+        const data = await res.json();
+        const msg = document.getElementById('leafMessage');
+        msg.innerText = data.message;
+        if (data.valid) {
+          badge.className = 'badge badge-success';
+          badge.innerText = '特征已确认';
+          if (!data.is_leaf && data.leaf) {
+            if (confirm(`检测到真实游戏根目录位于子目录:\n${data.leaf}\n是否自动替换为该路径？`)) {
+              document.getElementById('srcInput').value = data.leaf;
+            }
+          }
+        } else {
+          badge.className = 'badge badge-danger';
+          badge.innerText = '非标准目录';
+        }
+      } catch (e) {
+        alert('检测出错: ' + e);
+      }
+    }
+
+    // 启动任务
+    async function startPacking() {
+      const src = document.getElementById('srcInput').value.trim();
+      const out = document.getElementById('outInput').value.trim();
+      if (!src || !out) return alert('请填写源目录和输出目录');
+      saveFormCache();
+
+      const payload = {
+        src,
+        out,
+        workers: parseInt(document.getElementById('workersInput').value) || 4,
+        level: parseInt(document.getElementById('levelInput').value) || 9,
+        max_pack_size: document.getElementById('maxPackSizeInput').value,
+        pack_count: parseInt(document.getElementById('packCountInput').value) || 4,
+        copy_loose: document.getElementById('copyLooseSwitch').checked,
+        verify: document.getElementById('verifySwitch').checked,
+        leaf_check: document.getElementById('leafCheckSwitch').checked
+      };
+
+      try {
+        const res = await fetch(getApiUrl('/api/task/start'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!data.success) {
+          alert(data.message);
+        }
+      } catch (e) {
+        alert('启动请求失败: ' + e);
+      }
+    }
+
+    // 终止任务
+    async function stopPacking() {
+      if (!confirm('确定要终止当前压缩任务吗？未完成的临时文件可能需清理。')) return;
+      try {
+        await fetch(getApiUrl('/api/task/stop'), { method: 'POST' });
+      } catch (e) {
+        alert('终止请求失败: ' + e);
+      }
+    }
+
+    // 打开文件浏览
+    async function openFilePicker(field) {
+      activePickerField = field;
+      
+      // 在飞牛桌面 iframe 下，首先尝试呼出系统原生“选择文件夹”
+      if (fnSdk && window.parent !== window) {
+        const picked = await pickNativeFolder(field);
+        if (picked) return;
+      }
+
+      // 降级使用内置纯净 NAS 目录浏览器
+      const initial = document.getElementById(field + 'Input').value.trim() || '/';
+      document.getElementById('fileModal').style.display = 'flex';
+      loadDirectory(initial);
+    }
+
+    function closeFilePicker() {
+      document.getElementById('fileModal').style.display = 'none';
+    }
+
+    function renderBreadcrumbs(path) {
+      const bar = document.getElementById('breadcrumbBar');
+      const clean = path.replace(/\\/g, '/').replace(/\/+$/, '');
+      if (!clean || clean === '/') {
+        bar.innerHTML = '<span class="breadcrumb-item" onclick="loadDirectory(\'/\')">🏠 NAS 存储空间</span>';
+        return;
+      }
+      const parts = clean.split('/').filter(Boolean);
+      let html = '<span class="breadcrumb-item" onclick="loadDirectory(\'/\')">🏠 NAS 存储空间</span>';
+      let acc = '';
+      for (let i = 0; i < parts.length; i++) {
+        acc += '/' + parts[i];
+        const thisPath = acc;
+        let displayName = parts[i];
+        if (parts[i].startsWith('vol')) {
+          const num = parts[i].replace('vol', '');
+          displayName = `存储空间 ${num}`;
+        }
+        html += `<span class="breadcrumb-sep">❯</span><span class="breadcrumb-item" onclick="loadDirectory('${thisPath}')">${displayName}</span>`;
+      }
+      bar.innerHTML = html;
+    }
+
+    function renderVolumes(volumes) {
+      const container = document.getElementById('volChipsContainer');
+      let defaultVols = ['/', '/vol1', '/vol2', '/vol3', '/vol4'];
+      let allVols = [...new Set([...defaultVols, ...(volumes || [])])];
+      container.innerHTML = allVols.map(v => {
+        let label = v === '/' ? '全部存储空间' : v;
+        if (v.startsWith('/vol')) {
+          const num = v.replace('/vol', '');
+          label = `存储空间 ${num}`;
+        }
+        return `<button class="chip-btn" onclick="loadDirectory('${v}')">${label}</button>`;
+      }).join('');
+    }
+
+    async function loadDirectory(path) {
+      const list = document.getElementById('browseItems');
+      list.innerHTML = '<div style="padding: 24px; text-align: center; color: var(--text-muted);">⏳ 正在读取 NAS 存储空间...</div>';
+      try {
+        const url = getApiUrl('/api/browse?path=' + encodeURIComponent(path || '/'));
+        const res = await fetch(url);
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status} (${res.statusText})`);
+        }
+        const data = await res.json();
+        currentDir = data.current || path;
+        document.getElementById('manualBrowseInput').value = currentDir;
+        renderBreadcrumbs(currentDir);
+        
+        if (data.volumes && data.volumes.length > 0) {
+          renderVolumes(data.volumes);
+        }
+
+        const dirs = (data.items || []).filter(i => i.is_dir || i.is_image);
+        if (dirs.length === 0) {
+          list.innerHTML = '<div style="padding: 24px; color: var(--text-muted); text-align: center;">📭 该目录下无用户子文件夹或镜像文件</div>';
+          return;
+        }
+
+        list.innerHTML = dirs.map(item => {
+          let icon = '📁';
+          let badge = '进入 ❯';
+          let clickHandler = `loadDirectory('${item.path}')`;
+          if (item.is_volume) {
+            icon = '💾';
+            badge = '存储空间';
+          } else if (item.is_image) {
+            icon = '💿';
+            badge = `镜像 (${formatBytes(item.size)})`;
+            clickHandler = `selectImageFile('${item.path}')`;
+          }
+          return `
+            <div class="file-item" onclick="${clickHandler}">
+              <span style="display: flex; align-items: center; gap: 8px;">
+                <span>${icon}</span>
+                <span style="font-weight: 500;">${item.name}</span>
+              </span>
+              <span style="font-size: 11px; color: ${item.is_image ? '#38bdf8' : 'var(--text-muted)'}; font-weight: ${item.is_image ? '600' : 'normal'};">${badge}</span>
+            </div>
+          `;
+        }).join('');
+      } catch (e) {
+        list.innerHTML = `<div style="padding: 24px; color: #f87171; text-align: center;">❌ 读取目录失败: ${e.message}<br><button class="btn btn-secondary" style="margin-top: 10px;" onclick="loadDirectory('/')">返回 NAS 存储空间</button></div>`;
+      }
+    }
+
+    function selectImageFile(filePath) {
+      if (activePickerField === 'src') {
+        document.getElementById('srcInput').value = filePath;
+        saveFormCache();
+        checkLeaf();
+        closeFilePicker();
+      } else {
+        alert('输出目录必须为文件夹，不能选择镜像文件！');
+      }
+    }
+
+    function refreshCurrentDir() {
+      loadDirectory(currentDir);
+    }
+
+    function jumpToManualPath() {
+      const target = document.getElementById('manualBrowseInput').value.trim();
+      if (target) {
+        loadDirectory(target);
+      }
+    }
+
+    function browseUp() {
+      const parts = currentDir.replace(/\\/g, '/').split('/').filter(Boolean);
+      parts.pop();
+      const parent = '/' + parts.join('/');
+      loadDirectory(parent || '/');
+    }
+
+    function confirmSelectPath() {
+      if (activePickerField) {
+        document.getElementById(activePickerField + 'Input').value = currentDir;
+        saveFormCache();
+        if (activePickerField === 'src') checkLeaf();
+      }
+      closeFilePicker();
+    }
+
+    // ===== 表单状态与路径持久化存储 (LocalStorage + 后端异步双备份) =====
+    function saveFormCache() {
+      const srcEl = document.getElementById('srcInput');
+      const outEl = document.getElementById('outInput');
+      if (!srcEl || !outEl) return;
+      const src = srcEl.value.trim();
+      const out = outEl.value.trim();
+      const config = {
+        src: src,
+        out: out,
+        workers: document.getElementById('workersInput').value,
+        level: document.getElementById('levelInput').value,
+        max_pack_size: document.getElementById('maxPackSizeInput').value,
+        pack_count: document.getElementById('packCountInput').value,
+        copy_loose: document.getElementById('copyLooseSwitch').checked,
+        verify: document.getElementById('verifySwitch').checked,
+        leaf_check: document.getElementById('leafCheckSwitch').checked
+      };
+      try {
+        localStorage.setItem('ps5pack_form_cache', JSON.stringify(config));
+      } catch (e) {}
+
+      // 异步向后端保存路径
+      if (src || out) {
+        fetch(getApiUrl('/api/save_paths'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ src: src, out: out })
+        }).catch(() => {});
+      }
+    }
+
+    function loadFormCache() {
+      try {
+        const raw = localStorage.getItem('ps5pack_form_cache');
+        if (raw) {
+          const config = JSON.parse(raw);
+          const srcEl = document.getElementById('srcInput');
+          const outEl = document.getElementById('outInput');
+          if (config.src && srcEl && !srcEl.value) srcEl.value = config.src;
+          if (config.out && outEl && !outEl.value) outEl.value = config.out;
+          if (config.workers) document.getElementById('workersInput').value = config.workers;
+          if (config.level) document.getElementById('levelInput').value = config.level;
+          if (config.max_pack_size) document.getElementById('maxPackSizeInput').value = config.max_pack_size;
+          if (config.pack_count) document.getElementById('packCountInput').value = config.pack_count;
+          if (config.copy_loose !== undefined) document.getElementById('copyLooseSwitch').checked = config.copy_loose;
+          if (config.verify !== undefined) document.getElementById('verifySwitch').checked = config.verify;
+          if (config.leaf_check !== undefined) document.getElementById('leafCheckSwitch').checked = config.leaf_check;
+        }
+      } catch (e) {}
+    }
+
+    // 绑定输入变更自动保存
+    ['srcInput', 'outInput', 'workersInput', 'levelInput', 'maxPackSizeInput', 'packCountInput'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.addEventListener('input', saveFormCache);
+        el.addEventListener('change', saveFormCache);
+      }
+    });
+    ['copyLooseSwitch', 'verifySwitch', 'leafCheckSwitch'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('change', saveFormCache);
+    });
+
+    // 历史记录
+    async function loadHistory() {
+      try {
+        const res = await fetch(getApiUrl('/api/task/history'));
+        if (!res.ok) return;
+        const list = await res.json();
+        const container = document.getElementById('historyList');
+        if (!list || list.length === 0) {
+          container.innerHTML = '<div style="font-size: 12px; color: var(--text-muted); text-align: center; padding: 20px;">暂无历史记录</div>';
+          return;
+        }
+        container.innerHTML = list.map(item => `
+          <div style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 12px;">
+            <div style="display: flex; justify-content: space-between; font-weight: 600;">
+              <span>🎮 ${item.game_name || '未命名'}</span>
+              <span class="badge ${item.status === 'success' ? 'badge-success' : 'badge-danger'}">${item.status === 'success' ? '成功' : '失败'}</span>
+            </div>
+            <div style="color: var(--text-muted); font-size: 11px; margin-top: 4px;">
+              ${item.logical_gb ? `原始 ${item.logical_gb} GiB → 产物 ${item.stored_gb} GiB (节省 ${item.saving_pct}%) • ` : ''}用时 ${item.elapsed || 0}s • ${item.date}
+            </div>
+          </div>
+        `).join('');
+      } catch (e) {}
+    }
+
+    // 初始化载入本地表单缓存
+    loadFormCache();
+
+    // 初始化启动轮询
+    pollTimer = setInterval(pollStatus, 1500);
+    pollStatus();
+    loadHistory();
+  </script>
+</body>
+</html>

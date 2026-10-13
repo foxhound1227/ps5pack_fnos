@@ -1,0 +1,7 @@
+# Auto detect text files and normalize line endings
+* text=auto
+
+# Force LF for Linux shell scripts to prevent \r syntax error on fnOS Linux
+cmd/* text eol=lf
+*.sh text eol=lf
+ps5pack/cmd/* text eol=lf
