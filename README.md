@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/foxhound1227/ps5pack_fnos/releases"><img src="https://img.shields.io/badge/Release-v1.1.2-0070d1?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/foxhound1227/ps5pack_fnos/releases"><img src="https://img.shields.io/badge/Release-v1.1.3-0070d1?style=flat-square" alt="Version"></a>
   <a href="https://www.fnnas.com/"><img src="https://img.shields.io/badge/Platform-fnOS%20v1.1.3100+-00d2ff?style=flat-square" alt="Platform"></a>
   <a href="https://github.com/Nazky/Lazy_AMPR"><img src="https://img.shields.io/badge/Engine-AMPR%20LZ4-10b981?style=flat-square" alt="AMPR LZ4"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-amber?style=flat-square" alt="License"></a>
@@ -131,7 +131,11 @@ flowchart LR
 ### 第五步：部署至 PlayStation 5
 压缩完成后，输出目录内将包含：
 - 若干个分卷压缩包：`re_chunk_000.pak`, `re_chunk_001.pak` 等；
-- 索引文件与 loose 引导散文件：`ampr_index.bin`, `eboot.bin`, `sce_sys/` 等。
+- 索引文件与 loose 引导散文件：`ampr_index.bin`, `eboot.bin`, `sce_sys/` 等；
+- 校验清单：`verify.log`（保留于目标目录，便于留存和随时校验数据完整性）。
+
+> [!NOTE]
+> **目录纯净保护机制**：压缩过程中的详细终端日志（`pack.log`）会自动存放于**目标目录的上级目录**中，不会混入游戏产物根目录，保证部署至 PS5 主机 `/app0` 时的纯净规范。
 
 直接将该输出文件夹拷入移动固态硬盘插入 PS5，或通过 FTP/AMPR 工具部署至主机 `/app0`，即可享受高速免解压即点即玩！
 
@@ -183,6 +187,13 @@ ps5pack_fnos/
 <details>
 <summary><b>Q3: 关闭应用窗口或浏览器标签页，压缩任务会被中断吗？</b></summary>
 不会。压缩引擎在 NAS 后台作为独立系统守护进程持续稳定执行，重新打开桌面应用窗口即可自动恢复大屏监控并实时同步进度。
+</details>
+
+<details>
+<summary><b>Q4: 压缩生成的日志文件保存在哪里？</b></summary>
+为了避免日志污染 PS5 游戏目录：
+1. <b>打包详细日志 (<code>pack.log</code>)</b>：自动存放在压缩目标目录的<b>上一级目录</b>中。
+2. <b>数据校验日志 (<code>verify.log</code>)</b>：保留在<b>目标游戏目录</b>内，作为资产文件哈希校验的一致性存证凭据。
 </details>
 
 ---

@@ -414,8 +414,24 @@ class CompressorManager:
             self.task_state["progress"] = 10
             self.add_log("▶ [2/4] 启动 ampr_pack.py pack 压缩引擎...")
 
-            pack_tmp_json = os.path.join(out, ".pack_json")
-            pack_log_file = os.path.join(out, "pack.log")
+            # 计算上级目录 (parent_dir) 用于存放打包调试日志 (pack.log)
+            # 保持目标输出目录 (out) 纯净整洁，仅保留 PS5 必要产物与用户要求的 verify.log
+            clean_out = os.path.abspath(out.rstrip("/\\"))
+            parent_dir = os.path.dirname(clean_out)
+            if not parent_dir or not os.path.exists(parent_dir):
+                parent_dir = clean_out
+
+            pack_tmp_json = os.path.join(parent_dir, ".pack_json")
+            pack_log_file = os.path.join(parent_dir, "pack.log")
+            self.add_log(f"  打包日志保存至上级目录: {pack_log_file}")
+
+            # 清理目标目录下可能遗留的旧 pack.log
+            old_pack_log = os.path.join(out, "pack.log")
+            if os.path.isfile(old_pack_log):
+                try:
+                    os.remove(old_pack_log)
+                except Exception:
+                    pass
             
             cmd_pack = [
                 py_bin, AMPR_PACK_PY, "pack",
@@ -446,7 +462,7 @@ class CompressorManager:
 
                 proc.wait()
                 if proc.returncode != 0 and not self.stop_requested:
-                    raise RuntimeError(f"ampr_pack 压缩异常退出 (退出码 {proc.returncode})，详见 pack.log")
+                    raise RuntimeError(f"ampr_pack 压缩异常退出 (退出码 {proc.returncode})，详见 {pack_log_file}")
 
             if self.stop_requested:
                 return
@@ -471,6 +487,19 @@ class CompressorManager:
                             self.task_state["saving_pct"] = round((saved / self.task_state["logical_bytes"]) * 100, 1)
                 except Exception as e:
                     self.add_log(f"解析 .pack_json 出现警告: {e}")
+                finally:
+                    try:
+                        os.remove(pack_tmp_json)
+                    except Exception:
+                        pass
+
+            # 清理目标目录下可能残留的旧 .pack_json
+            old_json = os.path.join(out, ".pack_json")
+            if os.path.isfile(old_json):
+                try:
+                    os.remove(old_json)
+                except Exception:
+                    pass
 
             # --- 步骤 5: 执行校验 ---
             if verify and not self.stop_requested:
@@ -481,6 +510,7 @@ class CompressorManager:
                 
                 verify_index = os.path.join(out, "ampr_assets.index")
                 verify_log_file = os.path.join(out, "verify.log")
+                self.add_log(f"  校验日志保留于目标目录: {verify_log_file}")
                 cmd_verify = [
                     py_bin, AMPR_PACK_PY, "verify",
                     "--index", verify_index,
