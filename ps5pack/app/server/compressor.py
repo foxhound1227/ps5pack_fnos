@@ -126,17 +126,23 @@ class CompressorManager:
             if len(self.task_state["logs"]) > 500:
                 self.task_state["logs"].pop(0)
 
-    def load_history(self) -> List[Dict[str, Any]]:
+    def load_history(self, limit: int = 5) -> List[Dict[str, Any]]:
+        """读取历史记录，默认返回最近 5 条；limit=0 时返回全部"""
         if os.path.exists(self.history_file):
             try:
                 with open(self.history_file, "r", encoding="utf-8") as f:
-                    return json.load(f)
+                    data = json.load(f)
+                    if isinstance(data, list):
+                        if limit and limit > 0:
+                            return data[:limit]
+                        return data
+                    return []
             except Exception:
                 return []
         return []
 
     def save_history_entry(self, entry: Dict[str, Any]):
-        history = self.load_history()
+        history = self.load_history(limit=0)
         history.insert(0, entry)
         if len(history) > 50:
             history = history[:50]

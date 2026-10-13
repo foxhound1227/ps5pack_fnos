@@ -707,7 +707,7 @@
       <!-- 产物列表 / 历史记录 -->
       <div class="card">
         <div class="card-title">
-          <span>📦 最近压缩历史</span>
+          <span>📦 最近压缩历史 <span style="font-size: 11px; font-weight: normal; color: var(--text-muted); margin-left: 6px;">(最后 5 条)</span></span>
           <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;" onclick="loadHistory()">刷新</button>
         </div>
         <div id="historyList" style="max-height: 200px; overflow-y: auto;">
@@ -855,6 +855,8 @@
       return `${sec}秒`;
     }
 
+    let lastTaskStatus = null;
+
     // 状态轮询
     async function pollStatus() {
       try {
@@ -862,6 +864,13 @@
         if (!res.ok) return;
         const data = await res.json();
         const task = data.task;
+
+        // 任务状态流转：从运行中变为完成/失败/停止时，自动刷新最新 5 条历史记录
+        if (lastTaskStatus && !['completed', 'failed', 'stopped', 'idle'].includes(lastTaskStatus) &&
+            ['completed', 'failed', 'stopped'].includes(task.status)) {
+          loadHistory();
+        }
+        lastTaskStatus = task.status;
         
         // 更新指标
         document.getElementById('metricSpeed').innerText = task.speed || '—';
@@ -1295,10 +1304,10 @@
       if (el) el.addEventListener('change', saveFormCache);
     });
 
-    // 历史记录
+    // 历史记录 (只显示最后 5 个 / 最新 5 条)
     async function loadHistory() {
       try {
-        const res = await fetch(getApiUrl('/api/task/history'));
+        const res = await fetch(getApiUrl('/api/task/history?limit=5'));
         if (!res.ok) return;
         const list = await res.json();
         const container = document.getElementById('historyList');
@@ -1306,14 +1315,16 @@
           container.innerHTML = '<div style="font-size: 12px; color: var(--text-muted); text-align: center; padding: 20px;">暂无历史记录</div>';
           return;
         }
-        container.innerHTML = list.map(item => `
+        // 严格限制只显示最后 5 个
+        const recentList = list.slice(0, 5);
+        container.innerHTML = recentList.map(item => `
           <div style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 12px;">
             <div style="display: flex; justify-content: space-between; font-weight: 600;">
-              <span>🎮 ${item.game_name || '未命名'}</span>
+              <span>🎮 ${escapeHtml(item.game_name || '未命名')}</span>
               <span class="badge ${item.status === 'success' ? 'badge-success' : 'badge-danger'}">${item.status === 'success' ? '成功' : '失败'}</span>
             </div>
             <div style="color: var(--text-muted); font-size: 11px; margin-top: 4px;">
-              ${item.logical_gb ? `原始 ${item.logical_gb} GiB → 产物 ${item.stored_gb} GiB (节省 ${item.saving_pct}%) • ` : ''}用时 ${item.elapsed || 0}s • ${item.date}
+              ${item.logical_gb ? `原始 ${item.logical_gb} GiB → 产物 ${item.stored_gb} GiB (节省 ${item.saving_pct}%) • ` : ''}用时 ${item.elapsed || 0}s • ${escapeHtml(item.date || '')}
             </div>
           </div>
         `).join('');

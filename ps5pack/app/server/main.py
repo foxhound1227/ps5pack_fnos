@@ -94,7 +94,12 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             return self._send_json({"logs": logs, "status": status})
 
         elif clean_path == "/api/task/history":
-            history = compressor_manager.load_history()
+            limit_param = query.get("limit", ["5"])[0]
+            try:
+                limit_val = int(limit_param)
+            except Exception:
+                limit_val = 5
+            history = compressor_manager.load_history(limit=limit_val)
             return self._send_json(history)
 
         elif clean_path == "/api/browse":
