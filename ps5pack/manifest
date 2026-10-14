@@ -1,5 +1,5 @@
 appname=ps5pack
-version=1.1.6
+version=1.1.7
 display_name=PS5游戏压缩工具
 desc=基于 AMPR LZ4 协议的 PS5 游戏资产高速压缩工具。支持多线程并发、4-Lane 资产分流、自动补齐 loose 启动散文件、完整性校验、实时大屏监控与 NAS 目录树快速选择。
 source=thirdparty
@@ -11,4 +11,4 @@ desktop_applaunchname=ps5pack.main
 ctl_stop=true
 micro_app=true
 os_min_version=1.1.3100
-changelog=终极兼容升级：吸收索尼第一方自研引擎（宇宙机器人等）架构规范，纳入 param.sfx、*.sxd 音频总线、*.odx/*.odxb 描述符与 *.cache 预编译脚本/着色器管线缓存，实现第三方与索尼第一方大作全量完美免解包秒启。
+changelog=新增版本管理与在线更新检测：界面常驻版本号展示、自动对比 GitHub 官方最新 Release、发现新版气泡与横幅提醒、在线查看版本升级说明及一键直链下载最新安装包。

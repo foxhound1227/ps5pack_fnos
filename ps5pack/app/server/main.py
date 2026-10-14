@@ -13,12 +13,31 @@ import socket
 import socketserver
 import argparse
 import urllib.parse
+import urllib.request
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from typing import Dict, Any, Optional, List
 
 from compressor import compressor_manager
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+GITHUB_REPO = "foxhound1227/ps5pack_fnos"
+UPDATE_CACHE = {"timestamp": 0, "data": None}
+
+def get_app_version() -> str:
+    """读取 manifest 中的版本号"""
+    curr = os.path.dirname(os.path.abspath(__file__))
+    for _ in range(4):
+        cand = os.path.join(curr, "manifest")
+        if os.path.isfile(cand):
+            try:
+                with open(cand, "r", encoding="utf-8") as f:
+                    for line in f:
+                        if line.startswith("version="):
+                            return line.strip().split("=", 1)[1]
+            except Exception:
+                pass
+        curr = os.path.dirname(curr)
+    return "1.1.7"
 
 class AppRequestHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -111,6 +130,65 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             out_dir = query.get("out_path", [""])[0]
             files = compressor_manager.list_output_files(out_dir)
             return self._send_json({"files": files})
+
+        elif clean_path == "/api/version":
+            return self._send_json({
+                "version": get_app_version(),
+                "repo": GITHUB_REPO,
+                "releases_url": f"https://github.com/{GITHUB_REPO}/releases"
+            })
+
+        elif clean_path == "/api/check_update":
+            current_ver = get_app_version()
+            now = time.time()
+            # 缓存 10 分钟 (600秒)
+            if UPDATE_CACHE["data"] and (now - UPDATE_CACHE["timestamp"] < 600):
+                data = dict(UPDATE_CACHE["data"])
+                data["current_version"] = current_ver
+                return self._send_json(data)
+
+            url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": "ps5pack-update-checker",
+                    "Accept": "application/vnd.github.v3+json"
+                }
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=6) as resp:
+                    rel = json.loads(resp.read().decode("utf-8"))
+                    latest_tag = rel.get("tag_name", "")
+                    latest_ver = latest_tag.lstrip("v")
+                    download_url = ""
+                    for asset in rel.get("assets", []):
+                        if asset.get("name") == "ps5pack.fpk":
+                            download_url = asset.get("browser_download_url", "")
+                            break
+                    if not download_url:
+                        download_url = rel.get("html_url", f"https://github.com/{GITHUB_REPO}/releases")
+
+                    res = {
+                        "success": True,
+                        "current_version": current_ver,
+                        "latest_version": latest_ver,
+                        "tag_name": latest_tag,
+                        "release_name": rel.get("name", latest_tag),
+                        "release_body": rel.get("body", ""),
+                        "published_at": rel.get("published_at", ""),
+                        "html_url": rel.get("html_url", ""),
+                        "download_url": download_url
+                    }
+                    UPDATE_CACHE["timestamp"] = now
+                    UPDATE_CACHE["data"] = res
+                    return self._send_json(res)
+            except Exception as e:
+                return self._send_json({
+                    "success": False,
+                    "current_version": current_ver,
+                    "error": str(e),
+                    "releases_url": f"https://github.com/{GITHUB_REPO}/releases"
+                })
 
         # 静态文件或默认主页
         if clean_path in ("", "/", "/index.html"):
