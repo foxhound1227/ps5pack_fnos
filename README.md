@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/foxhound1227/ps5pack_fnos/releases"><img src="https://img.shields.io/badge/Release-v1.1.8-0070d1?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/foxhound1227/ps5pack_fnos/releases"><img src="https://img.shields.io/badge/Release-v1.1.9-0070d1?style=flat-square" alt="Version"></a>
   <a href="https://www.fnnas.com/"><img src="https://img.shields.io/badge/Platform-fnOS%20v1.1.3100+-00d2ff?style=flat-square" alt="Platform"></a>
   <a href="https://github.com/Nazky/Lazy_AMPR"><img src="https://img.shields.io/badge/Engine-AMPR%20LZ4-10b981?style=flat-square" alt="AMPR LZ4"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-amber?style=flat-square" alt="License"></a>

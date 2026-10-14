@@ -37,7 +37,7 @@ def get_app_version() -> str:
             except Exception:
                 pass
         curr = os.path.dirname(curr)
-    return "1.1.8"
+    return "1.1.9"
 
 class AppRequestHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):

@@ -606,16 +606,16 @@ class CompressorManager:
             for pattern in SAFETY_EXCLUSIONS:
                 cmd_pack.extend(["--exclude", pattern])
 
-            popen_kwargs = {
-                "stdout": json_f,
-                "stderr": subprocess.PIPE,
-                "text": True,
-                "bufsize": 1
-            }
-            if os.name != "nt":
-                popen_kwargs["start_new_session"] = True
-
             with open(pack_log_file, "w", encoding="utf-8") as log_f, open(pack_tmp_json, "w", encoding="utf-8") as json_f:
+                popen_kwargs = {
+                    "stdout": json_f,
+                    "stderr": subprocess.PIPE,
+                    "text": True,
+                    "bufsize": 1
+                }
+                if os.name != "nt":
+                    popen_kwargs["start_new_session"] = True
+
                 proc = subprocess.Popen(cmd_pack, **popen_kwargs)
                 self.current_process = proc
 
