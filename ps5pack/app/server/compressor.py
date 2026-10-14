@@ -14,10 +14,100 @@ import subprocess
 import threading
 import re
 import hashlib
+import fnmatch
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
 DISK_IMAGE_EXTS = {".exfat", ".img", ".iso", ".bin", ".raw"}
+
+# 全局安全防御排除清单（对齐 Nazky/Lazy_AMPR 与 PS5 引导兼容标准）
+# 规则说明：由于 fnmatchcase 机制中 '**/xxx' 不匹配根目录文件，因此所有模式均同时声明 'xxx' 与 '**/xxx'
+SAFETY_EXCLUSIONS = (
+    # 1. 签名与可执行入口（PS5 OS 加载必需）
+    "eboot.bin", "**/eboot.bin",
+    "*.elf", "**/*.elf",
+    "*.self", "**/*.self",
+    "*.prx", "**/*.prx",
+    "*.sprx", "**/*.sprx",
+    "sce_module/**", "**/sce_module/**",
+    "sce_sys/**", "**/sce_sys/**",
+    "fakelib/**", "**/fakelib/**",
+    "system/**", "**/system/**",
+    "decrypted/**", "**/decrypted/**",
+    "mods/**", "**/mods/**",
+    "save/**", "**/save/**",
+    "_DUPLEX_/**", "**/_DUPLEX_/**",
+    "trophy2/**", "**/trophy2/**",
+    "uds/**", "**/uds/**",
+
+    # 2. 游戏代码运行时核心（Unity / Capcom RE Engine / 虚幻引擎代码引导）
+    "*.rds", "**/*.rds",
+    "runtime_il2cppMasterPS5.rds", "**/runtime_il2cppMasterPS5.rds",
+    "*.args", "**/*.args",
+    "natives/**", "**/natives/**",
+    "*.utoc", "**/*.utoc",
+
+    # 3. 签名凭据、存档 Key 与内部索引
+    "keystone", "**/keystone",
+    "nptitle.dat", "**/nptitle.dat",
+    "ampr_emu.index", "**/ampr_emu.index",
+    "ampr_assets.index", "**/ampr_assets.index",
+    "ampr_assets.index.crc", "**/ampr_assets.index.crc",
+    "ampr_assets.index.runtime", "**/ampr_assets.index.runtime",
+    "ampr_assets-*.pak", "**/ampr_assets-*.pak",
+
+    # 4. 开机敏感视频与动画容器（底层通过 mmap 直读，必须 loose 否则开机启动图后死锁）
+    "*.bk2", "**/*.bk2",
+    "*.usm", "**/*.usm",
+    "*.ivf", "**/*.ivf",
+    "*.mp4", "**/*.mp4",
+    "*.m4v", "**/*.m4v",
+    "*.mkv", "**/*.mkv",
+    "*.avi", "**/*.avi",
+    "*.webm", "**/*.webm",
+    "video/**", "**/video/**",
+    "movie/**", "**/movie/**",
+    "movies/**", "**/movies/**",
+    "cutscene/**", "**/cutscene/**",
+    "cutscenes/**", "**/cutscenes/**",
+    "fmv/**", "**/fmv/**",
+    "cinematic/**", "**/cinematic/**",
+    "cinematics/**", "**/cinematics/**",
+
+    # 5. 音频容器与 SoundBank（开机期直接读取）
+    "*.bnk", "**/*.bnk",
+    "*.wem", "**/*.wem",
+    "*.at9", "**/*.at9",
+    "*.ogg", "**/*.ogg",
+    "*.opus", "**/*.opus",
+    "*.flac", "**/*.flac",
+    "*.mp3", "**/*.mp3",
+    "*.aac", "**/*.aac",
+    "*.m4a", "**/*.m4a",
+    "soundbank/**", "**/soundbank/**",
+
+    # 6. 配置文件、数据表与脚本（轻量级，明文直读）
+    "*.ini", "**/*.ini",
+    "*.cfg", "**/*.cfg",
+    "*.json", "**/*.json",
+    "*.xml", "**/*.xml",
+    "*.txt", "**/*.txt",
+    "*.dat", "**/*.dat",
+    "*.bak", "**/*.bak",
+    "*.pfs", "**/*.pfs",
+    "*.url", "**/*.url",
+
+    # 7. 贴图与已压缩格式（LZ4 零压缩收益）
+    "*.png", "**/*.png",
+    "*.jpg", "**/*.jpg",
+    "*.jpeg", "**/*.jpeg",
+    "*.webp", "**/*.webp",
+    "*.dds", "**/*.dds",
+    "*.ktx", "**/*.ktx",
+    "*.ktx2", "**/*.ktx2",
+    "*.otf", "**/*.otf",
+    "*.ttf", "**/*.ttf",
+)
 
 class ImageMountContext:
     """Linux 虚拟磁盘镜像只读挂载上下文 (支持 .exfat, .img, .iso, .raw 等)"""
@@ -446,6 +536,8 @@ class CompressorManager:
                 "--output", out,
                 "--config", profile_target
             ]
+            for pattern in SAFETY_EXCLUSIONS:
+                cmd_pack.extend(["--exclude", pattern])
 
             with open(pack_log_file, "w", encoding="utf-8") as log_f, open(pack_tmp_json, "w", encoding="utf-8") as json_f:
                 proc = subprocess.Popen(
@@ -754,30 +846,33 @@ class CompressorManager:
 
     def _copy_loose_files(self, src_root: str, out_root: str, pack_meta: Dict[str, Any]) -> tuple:
         """精准复制 loose 文件及 PS5 必要启动文件，带进度条与动态日志"""
-        loose_paths = list(pack_meta.get("loose_paths", []))
-        extra_candidates = [
-            "eboot.bin",
-            "sce_sys/param.json",
-            "sce_sys/icon0.png",
-            "sce_sys/pic0.png",
-            "sce_sys/snd0.at9"
-        ]
-        
-        all_to_copy = set(loose_paths + extra_candidates)
-        copied = 0
-        skipped = 0
+        loose_paths = set(pack_meta.get("loose_paths", []))
 
-        # 若原游戏有 sce_module / fakelib / sce_sys 整个目录，确保扫描进去
-        for special_dir in ["sce_module", "fakelib", "sce_sys"]:
+        # 1. 扫描已知开机必需的重点目录，无论如何强制全量包含
+        critical_dirs = ["sce_module", "fakelib", "sce_sys", "natives", "system", "video", "movie", "movies", "soundbank"]
+        for special_dir in critical_dirs:
             spec_full = os.path.join(src_root, special_dir)
             if os.path.isdir(spec_full):
                 for root, _, files in os.walk(spec_full):
                     for file in files:
                         rel = os.path.relpath(os.path.join(root, file), src_root).replace("\\", "/")
-                        all_to_copy.add(rel)
+                        loose_paths.add(rel)
 
+        # 2. 全盘遍历扫描：任何匹配 SAFETY_EXCLUSIONS 的散文件，确保 100% 复制到产物目录
+        for dirpath, dirnames, filenames in os.walk(src_root):
+            for fn in filenames:
+                full_path = os.path.join(dirpath, fn)
+                rel_path = os.path.relpath(full_path, src_root).replace("\\", "/")
+                # 检查是否匹配 SAFETY_EXCLUSIONS 中的任何规则
+                if any(fnmatch.fnmatchcase(rel_path, pat) for pat in SAFETY_EXCLUSIONS):
+                    loose_paths.add(rel_path)
+
+        all_to_copy = sorted(loose_paths)
         total_loose = len(all_to_copy) or 1
-        for idx, rel in enumerate(sorted(all_to_copy), 1):
+        copied = 0
+        skipped = 0
+
+        for idx, rel in enumerate(all_to_copy, 1):
             src_file = os.path.join(src_root, rel)
             out_file = os.path.join(out_root, rel)
             if not os.path.isfile(src_file):

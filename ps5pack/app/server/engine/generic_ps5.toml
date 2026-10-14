@@ -61,54 +61,94 @@ group = "assets"
 include = ["**"]
 layout = "mixed"
 
-# 2) 再 loose 安全网（最后一条 rule 兜底）：
-# - sce_module/sce_sys 是 PS5 OS metadata，签名敏感，混不得
-# - fakelib 是 PS5 越狱用的假库目录（PlayGo / Ampr stub）
-# - trophy2/uds/nptitle.dat/rds 是签名相关
-# - 已压缩格式 (png/jpg/dds/ktx/at9/wem/mp4/otf/ttf/xml/json/txt/dat) 再 LZ4 无收益，
-#   显式列比 auto_loose 更安全（不依赖 sample 结果）
-# - re_chunk_xxx.pak 不在这里排除 —— pack 端 auto_loose_min_savings_ratio=0.05 会自动跳过压不动的
+# 2) loose 安全网（兜底保护：开机核心、可执行代码、视频、音频、配置及已压缩格式）
+# 规则说明：由于 fnmatch 机制中 '**/xxx' 不匹配根目录文件，因此所有模式均同时声明 'xxx' 与 '**/xxx'
 [[rule]]
 action = "loose"
 group = "assets"
 include = [
-    # 签名敏感的容器/入口
-    "**/eboot.bin",
-    "**/*.elf",
-    "**/*.self",
-    "**/*.prx",
-    "**/*.sprx",
-    # PS5 OS metadata + 假库 整个目录
-    "**/sce_module/**",
-    "**/sce_sys/**",
-    "**/fakelib/**",
-    # 其他不该动的目录
-    "**/system/**",
-    "**/decrypted/**",
-    "**/mods/**",
-    "**/save/**",
-    "**/_DUPLEX_/**",
-    "**/trophy2/**",
-    "**/uds/**",
-    # 已压缩格式 / 配置 / 数据（再 LZ4 无收益）
-    "**/*.png",
-    "**/*.jpg",
-    "**/*.jpeg",
-    "**/*.dds",
-    "**/*.ktx",
-    "**/*.at9",
-    "**/*.wem",
-    "**/*.mp4",
-    "**/*.m4a",
-    "**/*.ogg",
-    "**/*.otf",
-    "**/*.ttf",
-    "**/*.xml",
-    "**/*.json",
-    "**/*.txt",
-    "**/*.dat",
-    "**/*.bak",
-    # 签名相关 / Unity il2cpp
-    "**/nptitle.dat",
-    "**/runtime_il2cppMasterPS5.rds",
+    # 1. 签名与可执行入口（PS5 OS 加载必需）
+    "eboot.bin", "**/eboot.bin",
+    "*.elf", "**/*.elf",
+    "*.self", "**/*.self",
+    "*.prx", "**/*.prx",
+    "*.sprx", "**/*.sprx",
+    "sce_module/**", "**/sce_module/**",
+    "sce_sys/**", "**/sce_sys/**",
+    "fakelib/**", "**/fakelib/**",
+    "system/**", "**/system/**",
+    "decrypted/**", "**/decrypted/**",
+    "mods/**", "**/mods/**",
+    "save/**", "**/save/**",
+    "_DUPLEX_/**", "**/_DUPLEX_/**",
+    "trophy2/**", "**/trophy2/**",
+    "uds/**", "**/uds/**",
+
+    # 2. 游戏代码运行时核心（Unity / Capcom RE Engine / 虚幻引擎代码引导）
+    "*.rds", "**/*.rds",
+    "runtime_il2cppMasterPS5.rds", "**/runtime_il2cppMasterPS5.rds",
+    "*.args", "**/*.args",
+    "natives/**", "**/natives/**",
+    "*.utoc", "**/*.utoc",
+
+    # 3. 签名凭据、存档 Key 与内部索引
+    "keystone", "**/keystone",
+    "nptitle.dat", "**/nptitle.dat",
+    "ampr_emu.index", "**/ampr_emu.index",
+    "ampr_assets.index", "**/ampr_assets.index",
+    "ampr_assets.index.crc", "**/ampr_assets.index.crc",
+    "ampr_assets.index.runtime", "**/ampr_assets.index.runtime",
+    "ampr_assets-*.pak", "**/ampr_assets-*.pak",
+
+    # 4. 开机敏感视频与动画容器（底通过 mmap 直读，必须 loose 否则开机启动图后死锁）
+    "*.bk2", "**/*.bk2",
+    "*.usm", "**/*.usm",
+    "*.ivf", "**/*.ivf",
+    "*.mp4", "**/*.mp4",
+    "*.m4v", "**/*.m4v",
+    "*.mkv", "**/*.mkv",
+    "*.avi", "**/*.avi",
+    "*.webm", "**/*.webm",
+    "video/**", "**/video/**",
+    "movie/**", "**/movie/**",
+    "movies/**", "**/movies/**",
+    "cutscene/**", "**/cutscene/**",
+    "cutscenes/**", "**/cutscenes/**",
+    "fmv/**", "**/fmv/**",
+    "cinematic/**", "**/cinematic/**",
+    "cinematics/**", "**/cinematics/**",
+
+    # 5. 音频容器与 SoundBank（开机期直接读取）
+    "*.bnk", "**/*.bnk",
+    "*.wem", "**/*.wem",
+    "*.at9", "**/*.at9",
+    "*.ogg", "**/*.ogg",
+    "*.opus", "**/*.opus",
+    "*.flac", "**/*.flac",
+    "*.mp3", "**/*.mp3",
+    "*.aac", "**/*.aac",
+    "*.m4a", "**/*.m4a",
+    "soundbank/**", "**/soundbank/**",
+
+    # 6. 配置文件、数据表与脚本（轻量级，明文直读）
+    "*.ini", "**/*.ini",
+    "*.cfg", "**/*.cfg",
+    "*.json", "**/*.json",
+    "*.xml", "**/*.xml",
+    "*.txt", "**/*.txt",
+    "*.dat", "**/*.dat",
+    "*.bak", "**/*.bak",
+    "*.pfs", "**/*.pfs",
+    "*.url", "**/*.url",
+
+    # 7. 贴图与已压缩格式（LZ4 零压缩收益）
+    "*.png", "**/*.png",
+    "*.jpg", "**/*.jpg",
+    "*.jpeg", "**/*.jpeg",
+    "*.webp", "**/*.webp",
+    "*.dds", "**/*.dds",
+    "*.ktx", "**/*.ktx",
+    "*.ktx2", "**/*.ktx2",
+    "*.otf", "**/*.otf",
+    "*.ttf", "**/*.ttf",
 ]
