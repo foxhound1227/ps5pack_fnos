@@ -679,7 +679,11 @@ class CompressorManager:
                 
                 verify_index = os.path.join(out, "ampr_assets.index")
                 verify_log_file = os.path.join(out, "verify.log")
-                self.add_log(f"  校验日志保留于目标目录: {verify_log_file}")
+                cmd_verify = [
+                    py_bin, AMPR_PACK_PY, "verify",
+                    "--index", verify_index,
+                    "--root", real_src
+                ]
                 v_popen_kwargs = {
                     "stdout": subprocess.PIPE,
                     "stderr": subprocess.PIPE,
