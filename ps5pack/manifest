@@ -1,5 +1,5 @@
 appname=ps5pack
-version=1.1.5
+version=1.1.6
 display_name=PS5游戏压缩工具
 desc=基于 AMPR LZ4 协议的 PS5 游戏资产高速压缩工具。支持多线程并发、4-Lane 资产分流、自动补齐 loose 启动散文件、完整性校验、实时大屏监控与 NAS 目录树快速选择。
 source=thirdparty
@@ -11,4 +11,4 @@ desktop_applaunchname=ps5pack.main
 ctl_stop=true
 micro_app=true
 os_min_version=1.1.3100
-changelog=重大修复：彻底解决压缩游戏在PS5(ShadowMountPlus/kstuff)开机卡启动画面死锁问题。补齐根目录通配符匹配，强制排除并直通可执行引导(eboot.bin)、IL2CPP运行库(*.rds)、底层参数(natives/**)及开机音视频文件，确保全部游戏完美免解包秒启。
+changelog=终极兼容升级：吸收索尼第一方自研引擎（宇宙机器人等）架构规范，纳入 param.sfx、*.sxd 音频总线、*.odx/*.odxb 描述符与 *.cache 预编译脚本/着色器管线缓存，实现第三方与索尼第一方大作全量完美免解包秒启。

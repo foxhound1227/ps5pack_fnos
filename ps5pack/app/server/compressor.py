@@ -40,12 +40,15 @@ SAFETY_EXCLUSIONS = (
     "trophy2/**", "**/trophy2/**",
     "uds/**", "**/uds/**",
 
-    # 2. 游戏代码运行时核心（Unity / Capcom RE Engine / 虚幻引擎代码引导）
+    # 2. 游戏代码运行时核心（Unity / Capcom RE Engine / 虚幻引擎 / 索尼第一方代码引导）
     "*.rds", "**/*.rds",
     "runtime_il2cppMasterPS5.rds", "**/runtime_il2cppMasterPS5.rds",
     "*.args", "**/*.args",
     "natives/**", "**/natives/**",
     "*.utoc", "**/*.utoc",
+    "*.cache", "**/*.cache",
+    "*.odx", "**/*.odx",
+    "*.odxb", "**/*.odxb",
 
     # 3. 签名凭据、存档 Key 与内部索引
     "keystone", "**/keystone",
@@ -78,6 +81,7 @@ SAFETY_EXCLUSIONS = (
     "*.bnk", "**/*.bnk",
     "*.wem", "**/*.wem",
     "*.at9", "**/*.at9",
+    "*.sxd", "**/*.sxd",
     "*.ogg", "**/*.ogg",
     "*.opus", "**/*.opus",
     "*.flac", "**/*.flac",
@@ -96,6 +100,8 @@ SAFETY_EXCLUSIONS = (
     "*.bak", "**/*.bak",
     "*.pfs", "**/*.pfs",
     "*.url", "**/*.url",
+    "*.sfx", "**/*.sfx",
+    "param.sfx", "**/param.sfx",
 
     # 7. 贴图与已压缩格式（LZ4 零压缩收益）
     "*.png", "**/*.png",
