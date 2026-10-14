@@ -182,7 +182,7 @@ class CompressorManager:
         self.history_file = os.path.join(self.data_dir, "history.json")
         self.last_paths_file = os.path.join(self.data_dir, "last_paths.json")
         
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
         self.current_process: Optional[subprocess.Popen] = None
         self.worker_thread: Optional[threading.Thread] = None
         self.stop_requested = False
@@ -412,25 +412,74 @@ class CompressorManager:
             self.worker_thread.start()
             return {"success": True, "message": "任务已启动"}
 
+    def _kill_process(self, proc: Optional[subprocess.Popen]):
+        """可靠且迅速地终止子进程及其所有派生进程（在 Linux 下向进程组发送信号）"""
+        if not proc:
+            return
+        try:
+            if proc.poll() is not None:
+                return
+            if os.name != "nt":
+                import signal
+                try:
+                    # 尝试向进程组发送 SIGTERM
+                    pgid = os.getpgid(proc.pid)
+                    os.killpg(pgid, signal.SIGTERM)
+                except Exception:
+                    proc.terminate()
+                
+                # 最多等待 1 秒
+                for _ in range(10):
+                    if proc.poll() is not None:
+                        return
+                    time.sleep(0.1)
+                
+                try:
+                    pgid = os.getpgid(proc.pid)
+                    os.killpg(pgid, signal.SIGKILL)
+                except Exception:
+                    proc.kill()
+            else:
+                proc.terminate()
+                for _ in range(10):
+                    if proc.poll() is not None:
+                        return
+                    time.sleep(0.1)
+                proc.kill()
+        except Exception:
+            pass
+
     def stop_task(self) -> Dict[str, Any]:
         with self.lock:
             if self.task_state["status"] in ("idle", "completed", "failed", "stopped"):
                 return {"success": False, "message": "当前没有正在执行的任务"}
             
             self.stop_requested = True
-            self.add_log("⚠️ 收到用户终止指令，正在停止进程...")
-            if self.current_process and self.current_process.poll() is None:
-                try:
-                    self.current_process.terminate()
-                    time.sleep(1)
-                    if self.current_process.poll() is None:
-                        self.current_process.kill()
-                except Exception as e:
-                    self.add_log(f"终止进程发生异常: {e}")
-            
+            proc_to_kill = self.current_process
             self.task_state["status"] = "stopped"
             self.task_state["step"] = "任务已被用户终止"
-            return {"success": True, "message": "任务已终止"}
+            self.task_state["live_log"] = ""
+            self.task_state["speed"] = "—"
+            self.task_state["eta"] = "—"
+            self.task_state["end_time"] = time.time()
+            self.add_log("⚠️ 收到用户终止指令，正在停止任务...")
+
+        # 在锁外执行强杀，避免持有锁导致其他并发 API 请求超时卡顿
+        if proc_to_kill:
+            self._kill_process(proc_to_kill)
+
+        self.add_log("🛑 任务已成功停止")
+        
+        # 记录到历史中
+        self.save_history_entry({
+            "game_name": self.task_state.get("game_name", "未知游戏"),
+            "src": self.task_state.get("src_path", ""),
+            "out": self.task_state.get("out_path", ""),
+            "elapsed": int(time.time() - self.task_state.get("start_time", time.time())),
+            "date": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "status": "stopped"
+        })
+        return {"success": True, "message": "任务已成功终止"}
 
     def _run_pipeline(self, src: str, out: str, workers: int, level: int, max_pack_size: str,
                       pack_count: int, auto_loose_ratio: float, copy_loose: bool, verify: bool, leaf_check: bool):
@@ -494,9 +543,21 @@ class CompressorManager:
             else:
                 self.add_log(f"  执行 build_ampr_index.py 生成索引...")
                 cmd = [py_bin, BUILD_INDEX_PY, real_src, "-o", index_target]
-                res = subprocess.run(cmd, capture_output=True, text=True)
-                if res.returncode != 0:
-                    raise RuntimeError(f"构建索引失败: {res.stderr or res.stdout}")
+                idx_kwargs = {
+                    "stdout": subprocess.PIPE,
+                    "stderr": subprocess.PIPE,
+                    "text": True
+                }
+                if os.name != "nt":
+                    idx_kwargs["start_new_session"] = True
+                idx_proc = subprocess.Popen(cmd, **idx_kwargs)
+                self.current_process = idx_proc
+                out_txt, err_txt = idx_proc.communicate()
+                self.current_process = None
+                if self.stop_requested:
+                    return
+                if idx_proc.returncode != 0:
+                    raise RuntimeError(f"构建索引失败: {err_txt or out_txt}")
                 self.add_log(f"  ✓ 索引构建成功: {os.path.getsize(index_target)} 字节")
 
             if self.stop_requested:
@@ -545,14 +606,17 @@ class CompressorManager:
             for pattern in SAFETY_EXCLUSIONS:
                 cmd_pack.extend(["--exclude", pattern])
 
+            popen_kwargs = {
+                "stdout": json_f,
+                "stderr": subprocess.PIPE,
+                "text": True,
+                "bufsize": 1
+            }
+            if os.name != "nt":
+                popen_kwargs["start_new_session"] = True
+
             with open(pack_log_file, "w", encoding="utf-8") as log_f, open(pack_tmp_json, "w", encoding="utf-8") as json_f:
-                proc = subprocess.Popen(
-                    cmd_pack,
-                    stdout=json_f,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    bufsize=1
-                )
+                proc = subprocess.Popen(cmd_pack, **popen_kwargs)
                 self.current_process = proc
 
                 # 实时读取 stderr 日志并解析进度
@@ -561,10 +625,11 @@ class CompressorManager:
                     log_f.flush()
                     self._parse_pack_line(line)
                     if self.stop_requested:
-                        proc.terminate()
+                        self._kill_process(proc)
                         break
 
                 proc.wait()
+                self.current_process = None
                 if proc.returncode != 0 and not self.stop_requested:
                     raise RuntimeError(f"ampr_pack 压缩异常退出 (退出码 {proc.returncode})，详见 {pack_log_file}")
 
@@ -615,19 +680,17 @@ class CompressorManager:
                 verify_index = os.path.join(out, "ampr_assets.index")
                 verify_log_file = os.path.join(out, "verify.log")
                 self.add_log(f"  校验日志保留于目标目录: {verify_log_file}")
-                cmd_verify = [
-                    py_bin, AMPR_PACK_PY, "verify",
-                    "--index", verify_index,
-                    "--root", real_src
-                ]
+                v_popen_kwargs = {
+                    "stdout": subprocess.PIPE,
+                    "stderr": subprocess.PIPE,
+                    "text": True,
+                    "bufsize": 1
+                }
+                if os.name != "nt":
+                    v_popen_kwargs["start_new_session"] = True
+
                 with open(verify_log_file, "w", encoding="utf-8") as vf:
-                    v_proc = subprocess.Popen(
-                        cmd_verify,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        text=True,
-                        bufsize=1
-                    )
+                    v_proc = subprocess.Popen(cmd_verify, **v_popen_kwargs)
                     self.current_process = v_proc
 
                     last_v_milestone = 0
@@ -635,6 +698,9 @@ class CompressorManager:
                     for line in v_proc.stderr:
                         vf.write(line)
                         vf.flush()
+                        if self.stop_requested:
+                            self._kill_process(v_proc)
+                            break
 
                         # 解析 [verify XX%] 或 [verify_crc XX%]
                         pct_m = re.search(r'\[verify\s+(\d+)%\]', line)
@@ -670,7 +736,10 @@ class CompressorManager:
                                 self.add_log(f"🔍 [校验里程碑 {v_tier}%] 原盘哈希比对通过 ({compact_v})")
 
                     v_proc.wait()
+                    self.current_process = None
                     self.task_state["live_log"] = ""
+                    if self.stop_requested:
+                        return
                     if v_proc.returncode == 0:
                         self.task_state["progress"] = 92
                         self.add_log("✓ 产物验证 100% 通过！所有 .pak 数据块哈希一致。")
@@ -879,6 +948,8 @@ class CompressorManager:
         skipped = 0
 
         for idx, rel in enumerate(all_to_copy, 1):
+            if self.stop_requested:
+                break
             src_file = os.path.join(src_root, rel)
             out_file = os.path.join(out_root, rel)
             if not os.path.isfile(src_file):

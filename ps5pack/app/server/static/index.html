@@ -657,7 +657,7 @@
       <div>
         <div style="display: flex; align-items: center; gap: 8px;">
           <div class="brand-title">PS5 AMPR LZ4 游戏压缩工具</div>
-          <span class="version-tag" id="appVersionBadge" title="当前安装版本，点击检查更新" onclick="checkUpdate(true)">v1.1.6</span>
+          <span class="version-tag" id="appVersionBadge" title="当前安装版本，点击检查更新" onclick="checkUpdate(true)">v1.1.8</span>
         </div>
         <div class="brand-subtitle">高性能多分卷无损压缩 • 专为飞牛 fnOS 优化</div>
       </div>
@@ -1124,6 +1124,9 @@
         } else if (task.status === 'failed') {
           badge.className = 'badge badge-danger';
           badge.innerText = '发生失败';
+        } else if (task.status === 'stopped') {
+          badge.className = 'badge badge-warning';
+          badge.innerText = '已终止';
         } else if (isRunning) {
           badge.className = 'badge badge-warning';
           badge.innerText = '处理中';
@@ -1302,10 +1305,26 @@
     // 终止任务
     async function stopPacking() {
       if (!confirm('确定要终止当前压缩任务吗？未完成的临时文件可能需清理。')) return;
+      const stopBtn = document.getElementById('stopBtn');
+      if (stopBtn) {
+        stopBtn.disabled = true;
+        stopBtn.textContent = '⏳ 正在终止...';
+      }
       try {
-        await fetch(getApiUrl('/api/task/stop'), { method: 'POST' });
+        const res = await fetch(getApiUrl('/api/task/stop'), { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          await pollStatus();
+          await fetchLogs();
+        } else {
+          alert(data.message || '终止失败');
+        }
       } catch (e) {
         alert('终止请求失败: ' + e);
+      } finally {
+        if (stopBtn) {
+          stopBtn.textContent = '🛑 终止任务';
+        }
       }
     }
 
@@ -1537,7 +1556,7 @@
           <div style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 12px;">
             <div style="display: flex; justify-content: space-between; font-weight: 600;">
               <span>🎮 ${escapeHtml(item.game_name || '未命名')}</span>
-              <span class="badge ${item.status === 'success' ? 'badge-success' : 'badge-danger'}">${item.status === 'success' ? '成功' : '失败'}</span>
+              <span class="badge ${item.status === 'success' ? 'badge-success' : (item.status === 'stopped' ? 'badge-warning' : 'badge-danger')}">${item.status === 'success' ? '成功' : (item.status === 'stopped' ? '已终止' : '失败')}</span>
             </div>
             <div style="color: var(--text-muted); font-size: 11px; margin-top: 4px;">
               ${item.logical_gb ? `原始 ${item.logical_gb} GiB → 产物 ${item.stored_gb} GiB (节省 ${item.saving_pct}%) • ` : ''}用时 ${item.elapsed || 0}s • ${escapeHtml(item.date || '')}
@@ -1548,7 +1567,7 @@
     }
 
     // === 版本管理与更新检测 ===
-    let appVersion = '1.1.6';
+    let appVersion = '1.1.8';
     let latestReleaseData = null;
 
     // 版本号对比: 返回 1 (v1 > v2), -1 (v1 < v2), 0 (相等)
