@@ -1,7 +1,9 @@
-# 通用 PS5 资产 profile — 未 trace 过的新游戏用这个
-# default_action = "compress" 把所有文件尝试压
-# auto_loose_* 自动 fallback：节省 <5% 自动转 loose（不浪费 CPU）
-# 最后一条 rule 把 runtime/loader/签名相关的目录 loose 兜底安全
+# 通用 PS5 资产 profile (v1.2.3 多阶梯自适应超兼容版)
+# 融合 theghostonline 启发式内核精髓：
+# 1. 默认通用大资产：128 KiB mixed 混合分块
+# 2. 纹理与游戏大资产：64 KiB mixed 页面对齐分块（契合 PS5 64KB Direct IO 物理页面）
+# 3. 散装音频音效资产：16 KiB random 极小分块 + hot 热数据低延迟标记（消除瞬时解压卡顿与爆音）
+# 4. 全方位安全 Loose 网：可执行体、系统目录、运行时代码、视频与无后缀流式媒体容器全面直通
 
 [pack]
 index_name = "ampr_assets.index"
@@ -44,7 +46,7 @@ validate_index_metadata = true
 [runtime]
 decoded_cache_bytes = "128MiB"
 physical_cache_bytes = "64MiB"
-workers = 4
+workers = 8
 latency_reserve_workers = 1
 
 [groups.assets]
@@ -53,15 +55,38 @@ assignment = "balanced"
 max_pack_size = "16GiB"
 stripe_large_files = false
 
-# 1) 先 compress 兜底：所有文件尝试 pack（除非被下面 loose 命中）
-#    group = "assets" + [groups.assets] pack_count=4 让产物拆 4 lane（之前 default group 单 lane 是死配置）
+# 1) 普通大资产压缩 (默认 128 KiB 混合布局)
 [[rule]]
 action = "compress"
 group = "assets"
 include = ["**"]
 layout = "mixed"
 
-# 2) loose 安全网（兜底保护：开机核心、可执行代码、视频、音频、配置及已压缩格式）
+# 2) 纹理与游戏大资产优化 (64 KiB 分块契约，对齐 PS5 64KB Direct IO 页面)
+[[rule]]
+action = "compress"
+group = "assets"
+block_size = "64KiB"
+layout = "mixed"
+include = [
+    "**/*.uasset", "**/*.ubulk", "**/*.bin",
+    "**/*.res"
+]
+
+# 3) 音频与音效资产优化 (16 KiB 极小分块 + 随机低延迟布局 + 热数据标记，防掉帧爆音)
+[[rule]]
+action = "compress"
+group = "assets"
+block_size = "16KiB"
+layout = "random"
+hot = true
+min_savings_ratio = 0.0025
+include = [
+    "**/sound/**", "**/audio/**", "**/sfx/**", "**/music/**", "**/voice/**",
+    "**/vo/**", "**/dialog/**", "**/dialogue/**"
+]
+
+# 4) loose 安全网（兜底保护：开机核心、可执行代码、视频、音频、配置及已压缩格式）
 # 规则说明：由于 fnmatch 机制中 '**/xxx' 不匹配根目录文件，因此所有模式均同时声明 'xxx' 与 '**/xxx'
 [[rule]]
 action = "loose"
@@ -103,7 +128,7 @@ include = [
     "ampr_assets.index.runtime", "**/ampr_assets.index.runtime",
     "ampr_assets-*.pak", "**/ampr_assets-*.pak",
 
-    # 4. 开机敏感视频与动画容器（底通过 mmap 直读，必须 loose 否则开机启动图后死锁）
+    # 4. 开机敏感视频与动画容器（底层通过 mmap 直读，必须 loose 否则开机启动图后死锁）
     "*.bk2", "**/*.bk2",
     "*.usm", "**/*.usm",
     "*.ivf", "**/*.ivf",
@@ -120,6 +145,8 @@ include = [
     "fmv/**", "**/fmv/**",
     "cinematic/**", "**/cinematic/**",
     "cinematics/**", "**/cinematics/**",
+    "**/movie", "**/movie_*",
+    "**/movies", "**/movies_*",
 
     # 5. 音频容器与 SoundBank（开机期直接读取）
     "*.bnk", "**/*.bnk",
@@ -133,6 +160,9 @@ include = [
     "*.aac", "**/*.aac",
     "*.m4a", "**/*.m4a",
     "soundbank/**", "**/soundbank/**",
+    "**/soundbank", "**/soundbank_*",
+    "**/screenreaderwem", "**/screenreaderwem.*",
+    "**/wem", "**/wem_*", "**/wem.*",
 
     # 6. 配置文件、数据表与脚本（轻量级，明文直读）
     "*.ini", "**/*.ini",

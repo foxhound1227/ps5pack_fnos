@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/foxhound1227/ps5pack_fnos/releases"><img src="https://img.shields.io/badge/Release-v1.2.2-0070d1?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/foxhound1227/ps5pack_fnos/releases"><img src="https://img.shields.io/badge/Release-v1.2.3-0070d1?style=flat-square" alt="Version"></a>
   <a href="https://www.fnnas.com/"><img src="https://img.shields.io/badge/Platform-fnOS%20v1.1.3100+-00d2ff?style=flat-square" alt="Platform"></a>
   <a href="https://github.com/Nazky/Lazy_AMPR"><img src="https://img.shields.io/badge/Engine-AMPR%20LZ4-10b981?style=flat-square" alt="AMPR LZ4"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-amber?style=flat-square" alt="License"></a>
@@ -29,7 +29,14 @@
 
 ## ✨ 核心特性
 
-- 🎯 **多 Profile 智能级联匹配机制与社区精选库 (v1.2.2 重磅新增)**
+- 🎼 **多阶梯自适应超兼容兜底配置升级 (v1.2.3 重磅优化)**
+  - 吸收社区启发式内核精髓，将全局兜底配置 `generic_ps5.toml` 升级为多阶梯自适应架构：
+    1. **音频低延迟 16 KiB 极小分块**：针对音效与语音资产采用 `16KiB` + `layout="random"` + `hot=true`，大幅降低 PS5 瞬时解压负载，消除音频卡顿爆音；
+    2. **大资产 64 KiB 页面对齐分块**：契合 PS5 物理页面 Direct IO，提高缓存命中率；
+    3. **PS5 运行时 8 线程并发**：充分释放 PS5 Zen 2 8核处理器性能，大幅加快关卡载入耗时；
+    4. **无后缀媒体流容器全面防崩**：补全 `**/soundbank*`、`**/movie*`、`**/wem*` 等流式大包通配规则。
+- 🎯 **多 Profile 智能级联匹配机制与社区精选库 (v1.2.2 新增)**
+
   - 内置整合开源社区成熟经过实机验证的精调配置库（`profiles/`）：
     - `astrobot.toml`（索尼第一方《宇宙机器人》实机 Trace 精炼规则）；
     - `insomniac.toml`（Insomniac 引擎专有规则：解决漫威蜘蛛侠全家桶开机闪退问题，安全压缩 `d/*` 资产）；

@@ -76,6 +76,8 @@ SAFETY_EXCLUSIONS = (
     "fmv/**", "**/fmv/**",
     "cinematic/**", "**/cinematic/**",
     "cinematics/**", "**/cinematics/**",
+    "**/movie", "**/movie_*",
+    "**/movies", "**/movies_*",
 
     # 5. 音频容器与 SoundBank（开机期直接读取）
     "*.bnk", "**/*.bnk",
@@ -89,6 +91,9 @@ SAFETY_EXCLUSIONS = (
     "*.aac", "**/*.aac",
     "*.m4a", "**/*.m4a",
     "soundbank/**", "**/soundbank/**",
+    "**/soundbank", "**/soundbank_*",
+    "**/screenreaderwem", "**/screenreaderwem.*",
+    "**/wem", "**/wem_*", "**/wem.*",
 
     # 6. 配置文件、数据表与脚本（轻量级，明文直读）
     "*.ini", "**/*.ini",
