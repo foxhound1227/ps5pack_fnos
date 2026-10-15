@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/foxhound1227/ps5pack_fnos/releases"><img src="https://img.shields.io/badge/Release-v1.2.4-0070d1?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/foxhound1227/ps5pack_fnos/releases"><img src="https://img.shields.io/badge/Release-v1.2.5-0070d1?style=flat-square" alt="Version"></a>
   <a href="https://www.fnnas.com/"><img src="https://img.shields.io/badge/Platform-fnOS%20v1.1.3100+-00d2ff?style=flat-square" alt="Platform"></a>
   <a href="https://github.com/Nazky/Lazy_AMPR"><img src="https://img.shields.io/badge/Engine-AMPR%20LZ4-10b981?style=flat-square" alt="AMPR LZ4"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-amber?style=flat-square" alt="License"></a>
@@ -29,6 +29,10 @@
 
 ## ✨ 核心特性
 
+- ⚖️ **全量真实落盘体积精准对比与统计 (v1.2.5)**
+  - **原始基准自适应识别**：当输入为 `.exfat`、`.img`、`.iso` 等单文件镜像时，直接读取该镜像的物理落盘文件大小作为基准；若输入为解包目录，则递归扫描全目录全量文件总大小；
+  - **产物全量物理复核**：压缩完成、散文件直通复制与 `fakelib` 驱动注入完成后，递归统计输出目录全量文件落盘总字节数（涵盖 `.pak`、`ampr_assets.index`、`libSceAmpr.sprx`、`eboot.bin`、音视频 Loose 资产等）；
+  - **端到端真实节省率**：彻底解决以往仅统计 `.pak` 内部资产而排除了数十 GB Loose 媒体文件或镜像头尾空间导致的体积认知偏差，使大屏监控、历史记录和总结日志展现绝对真实的磁盘节省效果。
 - 🔄 **交互视觉打磨升级 (v1.2.4)**
   - 顶栏“检查更新”按钮全面摒弃各操作系统/浏览器字体渲染各异的方形 Emoji（`🔄`），升级为高保真原生圆形矢量 SVG 动画图标，旋转时完美绕圆心自转，彻底消除方形旋转边缘失真感。
 - 🎼 **多阶梯自适应超兼容兜底配置升级 (v1.2.3)**

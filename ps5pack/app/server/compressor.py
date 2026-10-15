@@ -437,6 +437,33 @@ class CompressorManager:
         result["profile"] = self.match_game_profile(game_dir, result)
         return result
 
+    def _calc_path_size(self, path: str) -> int:
+        """
+        计算指定路径的实际物理字节大小：
+        - 如果是单文件镜像（.exfat/.img 等），直接返回该文件的真实物理大小；
+        - 如果是目录，递归汇总旗下所有文件的真实大小（排除软链接防循环）。
+        """
+        if not path or not os.path.exists(path):
+            return 0
+        if os.path.isfile(path):
+            try:
+                return os.path.getsize(path)
+            except Exception:
+                return 0
+        total = 0
+        try:
+            for root, _, files in os.walk(path):
+                for f in files:
+                    fp = os.path.join(root, f)
+                    try:
+                        if not os.path.islink(fp):
+                            total += os.path.getsize(fp)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        return total
+
     def _ensure_ampr_runtime(self, out: str) -> bool:
         """
         全自动运行时 Hook 守卫：
@@ -730,6 +757,20 @@ class CompressorManager:
                 native_str = "是 (第一方/AMPR 原生)" if arch.get("ampr_native") else "否 (第三方专有引擎)"
                 driver_str = "源盘已自带" if arch.get("has_fakelib_ampr") else "将由系统全自动注入"
                 self.add_log(f"🔍 游戏架构诊断: {arch.get('title_name') or self.task_state['game_name']} [{arch.get('title_id') or '无TitleID'}] · 引擎 [{arch.get('engine')}] · 原生AMPR: {native_str} · 解压驱动: {driver_str}")
+            else:
+                arch = self.detect_game_architecture(real_src)
+
+            # --- 步骤 1.5: 原始全量体积统计 (单文件镜像 / 源游戏目录全量文件) ---
+            if os.path.isfile(src):
+                raw_src_size = os.path.getsize(src)
+                self.add_log(f"📊 输入源单文件物理体积: {round(raw_src_size / 1024 / 1024 / 1024, 2)} GiB ({raw_src_size:,} 字节)")
+            else:
+                self.task_state["step"] = "正在统计源目录全量原始体积..."
+                raw_src_size = self._calc_path_size(real_src)
+                self.add_log(f"📊 源游戏目录全量原始体积: {round(raw_src_size / 1024 / 1024 / 1024, 2)} GiB ({raw_src_size:,} 字节)")
+
+            with self.lock:
+                self.task_state["logical_bytes"] = raw_src_size
 
             if self.stop_requested:
                 return
@@ -853,14 +894,17 @@ class CompressorManager:
                 try:
                     with open(pack_tmp_json, "r", encoding="utf-8") as f:
                         pack_meta = json.load(f)
-                        self.task_state["logical_bytes"] = pack_meta.get("logical_bytes", 0)
-                        self.task_state["stored_bytes"] = pack_meta.get("stored_bytes", 0)
-                        self.task_state["packed_files"] = pack_meta.get("files_packed", 0)
-                        self.task_state["loose_files"] = pack_meta.get("files_loose", 0)
-                        if self.task_state["logical_bytes"] > 0:
-                            saved = self.task_state["logical_bytes"] - self.task_state["stored_bytes"]
-                            self.task_state["saved_bytes"] = saved
-                            self.task_state["saving_pct"] = round((saved / self.task_state["logical_bytes"]) * 100, 1)
+                        with self.lock:
+                            # 仅在之前未成功统计到原始体积时使用 pack_meta 兜底，避免覆盖全量体积
+                            if self.task_state["logical_bytes"] <= 0:
+                                self.task_state["logical_bytes"] = pack_meta.get("logical_bytes", 0)
+                            self.task_state["stored_bytes"] = pack_meta.get("stored_bytes", 0)
+                            self.task_state["packed_files"] = pack_meta.get("files_packed", 0)
+                            self.task_state["loose_files"] = pack_meta.get("files_loose", 0)
+                            if self.task_state["logical_bytes"] > 0 and self.task_state["stored_bytes"] > 0:
+                                saved = max(0, self.task_state["logical_bytes"] - self.task_state["stored_bytes"])
+                                self.task_state["saved_bytes"] = saved
+                                self.task_state["saving_pct"] = round((saved / self.task_state["logical_bytes"]) * 100, 1)
                 except Exception as e:
                     self.add_log(f"解析 .pack_json 出现警告: {e}")
                 finally:
@@ -975,6 +1019,23 @@ class CompressorManager:
             if not self.stop_requested:
                 self._ensure_ampr_runtime(out)
 
+            # --- 步骤 8: 统计产物目录全量真实体积并计算最终真实节省空间 ---
+            if not self.stop_requested:
+                self.task_state["step"] = "正在统计产物目录全量真实体积..."
+                final_out_size = self._calc_path_size(out)
+                raw_src_size = self.task_state.get("logical_bytes", 0)
+                if raw_src_size > 0:
+                    saved_bytes = max(0, raw_src_size - final_out_size)
+                    saving_pct = round((saved_bytes / raw_src_size) * 100, 1)
+                else:
+                    saved_bytes = 0
+                    saving_pct = 0.0
+
+                with self.lock:
+                    self.task_state["stored_bytes"] = final_out_size
+                    self.task_state["saved_bytes"] = saved_bytes
+                    self.task_state["saving_pct"] = saving_pct
+
             # --- 完成总结 ---
             end_ts = time.time()
             total_elapsed = int(end_ts - start_ts)
@@ -984,17 +1045,17 @@ class CompressorManager:
             self.task_state["elapsed"] = total_elapsed
             self.task_state["end_time"] = end_ts
             
-            log_mb = round(self.task_state["logical_bytes"] / 1024 / 1024 / 1024, 2)
-            stored_mb = round(self.task_state["stored_bytes"] / 1024 / 1024 / 1024, 2)
-            saved_mb = round(self.task_state["saved_bytes"] / 1024 / 1024 / 1024, 2)
+            log_gb = round(self.task_state["logical_bytes"] / 1024 / 1024 / 1024, 2)
+            stored_gb = round(self.task_state["stored_bytes"] / 1024 / 1024 / 1024, 2)
+            saved_gb = round(self.task_state["saved_bytes"] / 1024 / 1024 / 1024, 2)
 
             self.add_log("=" * 50)
             self.add_log(f"🎉 压缩打包圆满完成！总耗时: {total_elapsed} 秒")
-            self.add_log(f"   原始体积: {log_mb} GiB")
-            self.add_log(f"   压缩体积: {stored_mb} GiB")
-            self.add_log(f"   节省空间: {saved_mb} GiB ({self.task_state['saving_pct']}%)")
-            self.add_log(f"   打包分卷数: {self.task_state['packed_files']} 个文件打包入 .pak")
-            self.add_log(f"   产物目录: {out}")
+            self.add_log(f"   原始全量体积: {log_gb} GiB ({self.task_state['logical_bytes']:,} 字节)")
+            self.add_log(f"   产物全量体积: {stored_gb} GiB ({self.task_state['stored_bytes']:,} 字节)")
+            self.add_log(f"   真实节省空间: {saved_gb} GiB ({self.task_state['saving_pct']}%)")
+            self.add_log(f"   已打包文件数: {self.task_state['packed_files']} 个入 .pak，直通散文件: {self.task_state['loose_copied']} 个")
+            self.add_log(f"   产物输出目录: {out}")
             self.add_log("=" * 50)
 
             # 保存至历史记录
@@ -1003,9 +1064,9 @@ class CompressorManager:
                 "src": real_src,
                 "out": out,
                 "elapsed": total_elapsed,
-                "logical_gb": log_mb,
-                "stored_gb": stored_mb,
-                "saved_gb": saved_mb,
+                "logical_gb": log_gb,
+                "stored_gb": stored_gb,
+                "saved_gb": saved_gb,
                 "saving_pct": self.task_state["saving_pct"],
                 "date": time.strftime("%Y-%m-%d %H:%M:%S"),
                 "status": "success"
