@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/foxhound1227/ps5pack_fnos/releases"><img src="https://img.shields.io/badge/Release-v1.2.3-0070d1?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/foxhound1227/ps5pack_fnos/releases"><img src="https://img.shields.io/badge/Release-v1.2.4-0070d1?style=flat-square" alt="Version"></a>
   <a href="https://www.fnnas.com/"><img src="https://img.shields.io/badge/Platform-fnOS%20v1.1.3100+-00d2ff?style=flat-square" alt="Platform"></a>
   <a href="https://github.com/Nazky/Lazy_AMPR"><img src="https://img.shields.io/badge/Engine-AMPR%20LZ4-10b981?style=flat-square" alt="AMPR LZ4"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-amber?style=flat-square" alt="License"></a>
@@ -29,7 +29,9 @@
 
 ## ✨ 核心特性
 
-- 🎼 **多阶梯自适应超兼容兜底配置升级 (v1.2.3 重磅优化)**
+- 🔄 **交互视觉打磨升级 (v1.2.4)**
+  - 顶栏“检查更新”按钮全面摒弃各操作系统/浏览器字体渲染各异的方形 Emoji（`🔄`），升级为高保真原生圆形矢量 SVG 动画图标，旋转时完美绕圆心自转，彻底消除方形旋转边缘失真感。
+- 🎼 **多阶梯自适应超兼容兜底配置升级 (v1.2.3)**
   - 吸收社区启发式内核精髓，将全局兜底配置 `generic_ps5.toml` 升级为多阶梯自适应架构：
     1. **音频低延迟 16 KiB 极小分块**：针对音效与语音资产采用 `16KiB` + `layout="random"` + `hot=true`，大幅降低 PS5 瞬时解压负载，消除音频卡顿爆音；
     2. **大资产 64 KiB 页面对齐分块**：契合 PS5 物理页面 Direct IO，提高缓存命中率；

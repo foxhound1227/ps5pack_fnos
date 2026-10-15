@@ -119,6 +119,8 @@
     }
     .btn-icon-spin {
       display: inline-block;
+      vertical-align: -2px;
+      transform-origin: center center;
       transition: transform 0.2s;
     }
     .btn-icon-spin.spinning {
@@ -657,7 +659,7 @@
       <div>
         <div style="display: flex; align-items: center; gap: 8px;">
           <div class="brand-title">PS5 AMPR LZ4 游戏压缩工具</div>
-          <span class="version-tag" id="appVersionBadge" title="当前安装版本，点击检查更新" onclick="checkUpdate(true)">v1.2.3</span>
+          <span class="version-tag" id="appVersionBadge" title="当前安装版本，点击检查更新" onclick="checkUpdate(true)">v1.2.4</span>
         </div>
         <div class="brand-subtitle">高性能多分卷无损压缩 • 专为飞牛 fnOS 优化</div>
       </div>
@@ -668,7 +670,12 @@
         <span>发现新版 <strong id="updateBadgeVer">v1.1.7</strong></span>
       </div>
       <button class="check-update-btn" id="checkUpdateBtn" onclick="checkUpdate(true)" title="检查 GitHub 最新发布版本">
-        <span class="btn-icon-spin" id="checkUpdateIcon">🔄</span> 检查更新
+        <svg class="btn-icon-spin" id="checkUpdateIcon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 2px;">
+          <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+          <path d="M3 3v5h5"/>
+          <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+          <path d="M16 16h5v5"/>
+        </svg>检查更新
       </button>
       <div class="user-badge" id="userBadge">飞牛 OS 运行中</div>
     </div>
@@ -1613,7 +1620,7 @@
     }
 
     // === 版本管理与更新检测 ===
-    let appVersion = '1.2.3';
+    let appVersion = '1.2.4';
     let latestReleaseData = null;
 
     // 版本号对比: 返回 1 (v1 > v2), -1 (v1 < v2), 0 (相等)

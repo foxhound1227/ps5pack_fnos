@@ -68,7 +68,7 @@ def get_app_version() -> str:
                 pass
         curr = os.path.dirname(curr)
 
-    return "1.2.3"
+    return "1.2.4"
 
 class AppRequestHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):

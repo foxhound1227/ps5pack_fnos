@@ -1,5 +1,5 @@
 appname=ps5pack
-version=1.2.3
+version=1.2.4
 display_name=PS5游戏压缩工具
 desc=基于 AMPR LZ4 协议的 PS5 游戏资产高速压缩工具。支持多线程并发、4-Lane 资产分流、自动补齐 loose 启动散文件、完整性校验、实时大屏监控与 NAS 目录树快速选择。
 source=thirdparty
@@ -11,5 +11,6 @@ desktop_applaunchname=ps5pack.main
 ctl_stop=true
 micro_app=true
 os_min_version=1.1.3100
-changelog=升级通用兜底配置 (generic_ps5.toml) 为多阶梯自适应架构：融入16KiB音频低延迟分块与hot标记、64KiB页面对齐资产分块、PS5运行时8线程优化，以及无后缀媒体流容器全面防崩直通。
+changelog=将顶栏检查更新按钮图标由方形Emoji替换为原生圆形矢量SVG动画图标，彻底消除旋转时方形边缘失真异物感。
+
 
