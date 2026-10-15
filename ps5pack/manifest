@@ -1,5 +1,5 @@
 appname=ps5pack
-version=1.2.1
+version=1.2.2
 display_name=PS5游戏压缩工具
 desc=基于 AMPR LZ4 协议的 PS5 游戏资产高速压缩工具。支持多线程并发、4-Lane 资产分流、自动补齐 loose 启动散文件、完整性校验、实时大屏监控与 NAS 目录树快速选择。
 source=thirdparty
@@ -11,4 +11,4 @@ desktop_applaunchname=ps5pack.main
 ctl_stop=true
 micro_app=true
 os_min_version=1.1.3100
-changelog=集成 Drakmor 官方最新 v0.4.2.1 运行时解压驱动 (fakelib/libSceAmpr.sprx)，支持压缩完成全自动注入；新增游戏底层架构与 Title ID 智能诊断。
+changelog=整合开源社区精选成熟配置库 (Bundled Profiles)，上线智能级联匹配机制（优先用户自定义、社区TitleID精调、Insomniac/Unity引擎专属与全引擎通用兜底）。

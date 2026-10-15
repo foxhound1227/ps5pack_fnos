@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/foxhound1227/ps5pack_fnos/releases"><img src="https://img.shields.io/badge/Release-v1.2.1-0070d1?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/foxhound1227/ps5pack_fnos/releases"><img src="https://img.shields.io/badge/Release-v1.2.2-0070d1?style=flat-square" alt="Version"></a>
   <a href="https://www.fnnas.com/"><img src="https://img.shields.io/badge/Platform-fnOS%20v1.1.3100+-00d2ff?style=flat-square" alt="Platform"></a>
   <a href="https://github.com/Nazky/Lazy_AMPR"><img src="https://img.shields.io/badge/Engine-AMPR%20LZ4-10b981?style=flat-square" alt="AMPR LZ4"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-amber?style=flat-square" alt="License"></a>
@@ -23,12 +23,20 @@
 
 工具基于社区先进的 **AMPR LZ4 规范** 与多线程调度流式架构，在保证 PS5 主机端秒级透明解压的同时，通常可为大型 PS5 游戏缩减 **40% ~ 60%** 的存储体积（例如实测 83.7 GiB 游戏可大幅压缩至 39.5 GiB，净省 44.1 GiB 宝贵 SSD 空间）。
 
-同时深度集成飞牛 OS 原生微应用生态，提供直观的 Web 控制台、原生文件目录选择器、单文件镜像免解包挂载压缩、**libSceAmpr 运行时全自动注入**、**底层引擎智能透视**、实时吞吐大屏以及自适应微胶囊状态监控。
+同时深度集成飞牛 OS 原生微应用生态，提供直观的 Web 控制台、原生文件目录选择器、单文件镜像免解包挂载压缩、**libSceAmpr 运行时全自动注入**、**底层引擎智能透视**、**多 Profile 智能级联匹配**、实时吞吐大屏以及自适应微胶囊状态监控。
 
 ---
 
 ## ✨ 核心特性
 
+- 🎯 **多 Profile 智能级联匹配机制与社区精选库 (v1.2.2 重磅新增)**
+  - 内置整合开源社区成熟经过实机验证的精调配置库（`profiles/`）：
+    - `astrobot.toml`（索尼第一方《宇宙机器人》实机 Trace 精炼规则）；
+    - `insomniac.toml`（Insomniac 引擎专有规则：解决漫威蜘蛛侠全家桶开机闪退问题，安全压缩 `d/*` 资产）；
+    - `unity.toml`（Unity 引擎专属规则：安全压缩 `StreamingAssets`，彻底保护 `global-metadata.dat` 与启动核心）；
+    - `ufc6-PPSA23566.toml`（寒霜引擎 EA Sports UFC 6 专有分块规则）；
+  - **4 级级联自适应匹配**：源目录自定义配置优先 ➔ 社区 Title ID 专属精调 ➔ 引擎特征布局匹配（Insomniac / Unity） ➔ 全引擎大一统母版兜底（`generic_ps5.toml`）；
+  - 前端 UI 实时呈现选定的专属打包策略标签与提示，兼顾小白一键打包与高玩精调定制。
 - 💉 **`libSceAmpr.sprx` 运行时全自动补全注入 (v1.2.1 核心突破)**
   - 内置 Drakmor 官方原生 `libSceAmpr.sprx` 用户态解压驱动 (`v0.4.2.1-test`)；
   - 自动检测并于散文件复制阶段自动向 `fakelib/` 目录注入解压动态库并赋予 `0755` 权限；
@@ -167,7 +175,8 @@ ps5pack_fnos/
 │   │   │   ├── compressor.py   # 核心调度、loop挂载、架构诊断与日志流
 │   │   │   ├── main.py         # HTTP / 统一网关 Socket 服务
 │   │   │   ├── engine/         # AMPR LZ4 打包核心
-│   │   │   │   └── fakelib/    # 官方通用 libSceAmpr.sprx 运行时解压库
+│   │   │   │   ├── fakelib/    # 官方通用 libSceAmpr.sprx 运行时解压库
+│   │   │   │   └── profiles/   # 开源社区成熟配置库 (Astrobot, Insomniac, Unity, UFC6 等)
 │   │   │   └── static/         # 前端 Web UI (HTML/CSS/JS)
 │   │   └── ui/                 # 桌面卡片入口与启动配置
 │   ├── cmd/                    # 生命周期契约脚本 (main, install, uninstall)
@@ -210,11 +219,17 @@ PS5 系统底层内核无法原生直接透明读取 LZ4 压缩分卷包（<code
 在 v1.2.1 中，系统已内置 Drakmor 官方 <code>libSceAmpr.sprx</code> 核心运行时，在完成资产压缩与散文件拷贝后，<b>全自动无感补全注入该动态库并赋予可执行权限</b>，彻底免去手动拷贝配置的繁琐流程，保证所有支持 AMPR 的游戏启动开箱即玩！
 </details>
 
+<details>
+<summary><b>Q6: 针对特殊引擎（如 Insomniac、Unity）或个别游戏（如宇宙机器人），为什么需要专用配置？</b></summary>
+不同游戏引擎资产加载机制截然不同：例如 Insomniac 引擎（漫威蜘蛛侠、金刚狼等）若将 <code>dag</code>、<code>toc</code> 或音频包压缩，会导致进入游戏时指针异常闪退，仅允许压缩 <code>d/*</code> 目录；Unity 引擎对 <code>level*</code>、<code>sharedassets*</code> 及内存映射文件 <code>global-metadata.dat</code> 具有严苛的只读寻址依赖。因此 v1.2.2 深度整合了开源社区验证配置库并建立四级级联匹配机制，实现全自动智能防闪退调度。
+</details>
+
 ---
 
 ## 🤝 鸣谢与致谢
 
 - 核心打包引擎规范基于 [drakmor/ampr_emu](https://github.com/drakmor/ampr_emu) 与 [Nazky/Lazy_AMPR](https://github.com/Nazky/Lazy_AMPR)；
+- 社区精选配置库参考自 [theghostonline/PS5-LZ4-Compression](https://github.com/theghostonline/PS5-LZ4-Compression) 开源贡献；
 - 感谢 **飞牛私有云 (fnOS)** 团队提供的优秀 NAS 操作系统与微应用开放生态。
 
 ---

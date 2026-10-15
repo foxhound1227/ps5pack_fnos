@@ -170,6 +170,8 @@ class ImageMountContext:
 
 ENGINE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "engine")
 DEFAULT_PROFILE_PATH = os.path.join(ENGINE_DIR, "generic_ps5.toml")
+PROFILES_DIR = os.path.join(ENGINE_DIR, "profiles")
+PROFILES_INDEX = os.path.join(PROFILES_DIR, "index.json")
 BUILD_INDEX_PY = os.path.join(ENGINE_DIR, "build_ampr_index.py")
 AMPR_PACK_PY = os.path.join(ENGINE_DIR, "ampr_pack.py")
 
@@ -273,6 +275,89 @@ class CompressorManager:
         except Exception:
             pass
 
+    def match_game_profile(self, game_dir: str, arch: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        智能匹配最适合当前 PS5 游戏的 Profile 打包配置
+        对标 theghostonline 4 级优先级匹配机制 (Custom -> Bundled TitleID -> Engine Layout -> Generic)
+        """
+        # 1. 优先检测游戏源目录中是否包含用户自定义 pack_profile.toml 或 <TitleID>.toml
+        if game_dir and os.path.isdir(game_dir):
+            custom_candidates = [
+                os.path.join(game_dir, "pack_profile.toml"),
+                os.path.join(game_dir, f"{arch.get('title_id')}.toml") if arch.get("title_id") else None
+            ]
+            for cpath in custom_candidates:
+                if cpath and os.path.isfile(cpath) and os.path.getsize(cpath) > 0:
+                    return {
+                        "id": "custom",
+                        "type": "custom",
+                        "file_path": cpath,
+                        "label": f"用户专属配置 ({os.path.basename(cpath)})",
+                        "desc": "检测到源目录自带自定义规则，已优先激活"
+                    }
+
+        # 2. 读取社区预置精调库 profiles/index.json (ASTRO BOT, UFC6 等)
+        if os.path.isfile(PROFILES_INDEX):
+            try:
+                with open(PROFILES_INDEX, "r", encoding="utf-8") as f:
+                    profiles_meta = json.load(f)
+                tid = arch.get("title_id", "").upper().strip()
+                if tid:
+                    for item in profiles_meta:
+                        tids = [t.upper().strip() for t in item.get("titleIds", [])]
+                        if tid in tids:
+                            prof_file = os.path.join(PROFILES_DIR, item["file"])
+                            if os.path.isfile(prof_file):
+                                return {
+                                    "id": item["id"],
+                                    "type": "bundled",
+                                    "file_path": prof_file,
+                                    "label": f"社区精调: {item['label']} ({item['file']})",
+                                    "desc": f"实测适配: {item.get('tested', '')} · 针对该游戏深度调优"
+                                }
+            except Exception:
+                pass
+
+        # 3. 按底层引擎与文件布局特征匹配
+        # A. Insomniac 引擎（漫威蜘蛛侠、漫威金刚狼等：具有 toc、dag 文件与 d/ 目录）
+        if os.path.isfile(os.path.join(game_dir, "toc")) and os.path.isfile(os.path.join(game_dir, "dag")) and os.path.isdir(os.path.join(game_dir, "d")):
+            insomniac_prof = os.path.join(PROFILES_DIR, "insomniac.toml")
+            if os.path.isfile(insomniac_prof):
+                return {
+                    "id": "insomniac",
+                    "type": "engine",
+                    "file_path": insomniac_prof,
+                    "label": "Insomniac 引擎专有配置 (insomniac.toml)",
+                    "desc": "针对蜘蛛侠/金刚狼：只压 d/* 资产，强制保护 toc/dag/boot 散文件"
+                }
+
+        # B. Unity 引擎（包含 StreamingAssets 目录）
+        has_streaming_assets = os.path.isdir(os.path.join(game_dir, "StreamingAssets"))
+        if not has_streaming_assets:
+            for sub in ["Data", "app0"]:
+                if os.path.isdir(os.path.join(game_dir, sub, "StreamingAssets")):
+                    has_streaming_assets = True
+                    break
+        if arch.get("engine") == "Unity Engine" or has_streaming_assets:
+            unity_prof = os.path.join(PROFILES_DIR, "unity.toml")
+            if os.path.isfile(unity_prof):
+                return {
+                    "id": "unity",
+                    "type": "engine",
+                    "file_path": unity_prof,
+                    "label": "Unity 引擎专属配置 (unity.toml)",
+                    "desc": "安全规则：仅压缩 StreamingAssets 资产包，系统级数据保留 loose"
+                }
+
+        # 4. 兜底策略：全引擎通用大一统防护策略
+        return {
+            "id": "generic",
+            "type": "generic",
+            "file_path": DEFAULT_PROFILE_PATH,
+            "label": "全引擎通用防护策略 (generic_ps5.toml)",
+            "desc": "内置 4-Lane 分流与全引擎引导安全防御网"
+        }
+
     def detect_game_architecture(self, game_dir: str) -> Dict[str, Any]:
         """
         智能嗅探指定 PS5 游戏目录的底层引擎架构、Title ID 及 AMPR 兼容性
@@ -284,7 +369,8 @@ class CompressorManager:
             "ampr_native": False,
             "engine": "Standard PS5",
             "has_fakelib_ampr": False,
-            "summary": "标准 PS5 游戏"
+            "summary": "标准 PS5 游戏",
+            "profile": {}
         }
         if not game_dir or not os.path.isdir(game_dir):
             return result
@@ -312,7 +398,12 @@ class CompressorManager:
         fakelib_ampr = os.path.join(game_dir, "fakelib", "libSceAmpr.sprx")
         result["has_fakelib_ampr"] = os.path.isfile(fakelib_ampr) and os.path.getsize(fakelib_ampr) > 0
 
-        # 3. 扫描 eboot.bin 探测底层引擎与动态链接库
+        # 3. 扫描 Insomniac 引擎特征布局
+        if os.path.isfile(os.path.join(game_dir, "toc")) and os.path.isfile(os.path.join(game_dir, "dag")) and os.path.isdir(os.path.join(game_dir, "d")):
+            result["engine"] = "Insomniac Games"
+            result["summary"] = "Insomniac 引擎架构 (漫威蜘蛛侠/金刚狼)"
+
+        # 4. 扫描 eboot.bin 探测底层引擎与动态链接库
         eboot_bin = os.path.join(game_dir, "eboot.bin")
         if os.path.isfile(eboot_bin):
             try:
@@ -331,12 +422,14 @@ class CompressorManager:
                 elif b"il2cpp" in header_data or b"Unity" in header_data:
                     result["engine"] = "Unity Engine"
                     result["summary"] = "Unity 引擎 (IL2CPP)"
-                else:
+                elif result["engine"] == "Standard PS5":
                     result["engine"] = "Standard PS5 Engine"
                     result["summary"] = "标准通用游戏引擎"
             except Exception:
                 pass
 
+        # 5. 匹配最佳 Profile 配置方案
+        result["profile"] = self.match_game_profile(game_dir, result)
         return result
 
     def _ensure_ampr_runtime(self, out: str) -> bool:
@@ -671,8 +764,10 @@ class CompressorManager:
                 return
 
             # --- 步骤 3: 动态生成定制 profile.toml ---
+            matched_profile = self.match_game_profile(real_src, arch)
             profile_target = os.path.join(out, "pack_profile.toml")
-            self._generate_profile(DEFAULT_PROFILE_PATH, profile_target, workers, level, max_pack_size, pack_count, auto_loose_ratio)
+            self.add_log(f"📋 选定打包方案: {matched_profile['label']} — {matched_profile['desc']}")
+            self._generate_profile(matched_profile["file_path"], profile_target, workers, level, max_pack_size, pack_count, auto_loose_ratio)
             self.add_log(f"✓ 已生成定制配置: {profile_target}")
 
             if self.stop_requested:
@@ -941,11 +1036,29 @@ class CompressorManager:
         with open(template_path, "r", encoding="utf-8") as f:
             content = f.read()
 
-        content = re.sub(r"^workers\s*=\s*\d+", f"workers = {workers}", content, flags=re.MULTILINE)
-        content = re.sub(r"^compression_level\s*=\s*\d+", f"compression_level = {level}", content, flags=re.MULTILINE)
-        content = re.sub(r'max_pack_size\s*=\s*"[^"]+"', f'max_pack_size = "{max_pack_size}"', content, flags=re.MULTILINE)
-        content = re.sub(r"pack_count\s*=\s*\d+", f"pack_count = {pack_count}", content, flags=re.MULTILINE)
-        content = re.sub(r"auto_loose_min_savings_ratio\s*=\s*[\d\.]+", f"auto_loose_min_savings_ratio = {auto_loose_ratio}", content, flags=re.MULTILINE)
+        # 1. workers
+        if re.search(r"^workers\s*=", content, flags=re.MULTILINE):
+            content = re.sub(r"^workers\s*=\s*\d+", f"workers = {workers}", content, flags=re.MULTILINE)
+        elif "[pack]" in content:
+            content = re.sub(r"(\[pack\])", rf"\1\nworkers = {workers}", content, count=1)
+
+        # 2. compression_level
+        if re.search(r"^compression_level\s*=", content, flags=re.MULTILINE):
+            content = re.sub(r"^compression_level\s*=\s*\d+", f"compression_level = {level}", content, flags=re.MULTILINE)
+        elif "[pack]" in content:
+            content = re.sub(r"(\[pack\])", rf"\1\ncompression_level = {level}\ncompression_mode = \"hc\"", content, count=1)
+
+        # 3. max_pack_size
+        if re.search(r'max_pack_size\s*=', content):
+            content = re.sub(r'max_pack_size\s*=\s*"[^"]+"', f'max_pack_size = "{max_pack_size}"', content, flags=re.MULTILINE)
+
+        # 4. pack_count
+        if re.search(r"pack_count\s*=", content):
+            content = re.sub(r"pack_count\s*=\s*\d+", f"pack_count = {pack_count}", content, flags=re.MULTILINE)
+
+        # 5. auto_loose_min_savings_ratio
+        if re.search(r"auto_loose_min_savings_ratio\s*=", content):
+            content = re.sub(r"auto_loose_min_savings_ratio\s*=\s*[\d\.]+", f"auto_loose_min_savings_ratio = {auto_loose_ratio}", content, flags=re.MULTILINE)
 
         with open(out_path, "w", encoding="utf-8") as f:
             f.write(content)

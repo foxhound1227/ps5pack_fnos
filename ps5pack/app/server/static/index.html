@@ -657,7 +657,7 @@
       <div>
         <div style="display: flex; align-items: center; gap: 8px;">
           <div class="brand-title">PS5 AMPR LZ4 游戏压缩工具</div>
-          <span class="version-tag" id="appVersionBadge" title="当前安装版本，点击检查更新" onclick="checkUpdate(true)">v1.2.1</span>
+          <span class="version-tag" id="appVersionBadge" title="当前安装版本，点击检查更新" onclick="checkUpdate(true)">v1.2.2</span>
         </div>
         <div class="brand-subtitle">高性能多分卷无损压缩 • 专为飞牛 fnOS 优化</div>
       </div>
@@ -1288,6 +1288,9 @@
             const pillsEl = document.getElementById('archPills');
             let pillsHtml = '';
             pillsHtml += `<span class="live-pill" style="color: #38bdf8;">⚙️ 引擎: ${escapeHtml(arch.engine)}</span>`;
+            if (arch.profile && arch.profile.label) {
+              pillsHtml += `<span class="live-pill" style="color: #facc15;" title="${escapeHtml(arch.profile.desc || '')}">📋 方案: ${escapeHtml(arch.profile.label)}</span>`;
+            }
             if (arch.has_fakelib_ampr) {
               pillsHtml += `<span class="live-pill" style="color: #34d399;">✓ 源盘已内置解压驱动</span>`;
             } else {
@@ -1610,7 +1613,7 @@
     }
 
     // === 版本管理与更新检测 ===
-    let appVersion = '1.2.1';
+    let appVersion = '1.2.2';
     let latestReleaseData = null;
 
     // 版本号对比: 返回 1 (v1 > v2), -1 (v1 < v2), 0 (相等)
