@@ -657,7 +657,7 @@
       <div>
         <div style="display: flex; align-items: center; gap: 8px;">
           <div class="brand-title">PS5 AMPR LZ4 游戏压缩工具</div>
-          <span class="version-tag" id="appVersionBadge" title="当前安装版本，点击检查更新" onclick="checkUpdate(true)">v1.2.0</span>
+          <span class="version-tag" id="appVersionBadge" title="当前安装版本，点击检查更新" onclick="checkUpdate(true)">v1.2.1</span>
         </div>
         <div class="brand-subtitle">高性能多分卷无损压缩 • 专为飞牛 fnOS 优化</div>
       </div>
@@ -709,6 +709,18 @@
             <button class="btn btn-secondary" onclick="checkLeaf()">检测</button>
           </div>
           <div class="form-desc" id="leafMessage">支持解包散文件目录，或 .exfat / .img / .iso 单文件镜像（系统将自动只读挂载并压缩）。</div>
+
+          <!-- 游戏架构与驱动诊断卡片 -->
+          <div id="archDiagBox" style="display: none; margin-top: 10px; padding: 10px 14px; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; font-size: 12px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+              <div style="font-weight: 600; color: #fff; display: flex; align-items: center; gap: 6px;">
+                <span>🎮</span> <span id="archTitleName">检测中</span> <span id="archTitleId" style="color: var(--text-muted); font-size: 11px;"></span>
+              </div>
+              <span id="archBadge" class="badge"></span>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;" id="archPills">
+            </div>
+          </div>
         </div>
 
         <!-- 输出目录 -->
@@ -1251,9 +1263,39 @@
         const data = await res.json();
         const msg = document.getElementById('leafMessage');
         msg.innerText = data.message;
+        const archBox = document.getElementById('archDiagBox');
+
         if (data.valid) {
           badge.className = 'badge badge-success';
           badge.innerText = '特征已确认';
+
+          // 动态呈现游戏架构与驱动注入状态
+          if (data.arch && archBox) {
+            const arch = data.arch;
+            archBox.style.display = 'block';
+            document.getElementById('archTitleName').innerText = arch.title_name || (data.leaf ? data.leaf.split(/[\\/]/).pop() : 'PS5 游戏');
+            document.getElementById('archTitleId').innerText = arch.title_id ? `[${arch.title_id}]` : '';
+
+            const badgeEl = document.getElementById('archBadge');
+            if (arch.ampr_native) {
+              badgeEl.className = 'badge badge-success';
+              badgeEl.innerText = '✨ 原生 AMPR 架构';
+            } else {
+              badgeEl.className = 'badge badge-info';
+              badgeEl.innerText = '🛡️ 第三方专有引擎';
+            }
+
+            const pillsEl = document.getElementById('archPills');
+            let pillsHtml = '';
+            pillsHtml += `<span class="live-pill" style="color: #38bdf8;">⚙️ 引擎: ${escapeHtml(arch.engine)}</span>`;
+            if (arch.has_fakelib_ampr) {
+              pillsHtml += `<span class="live-pill" style="color: #34d399;">✓ 源盘已内置解压驱动</span>`;
+            } else {
+              pillsHtml += `<span class="live-pill" style="color: #a5b4fc;">🚀 打包将自动注入 fakelib/libSceAmpr.sprx (v0.4.2.1)</span>`;
+            }
+            pillsEl.innerHTML = pillsHtml;
+          }
+
           if (!data.is_leaf && data.leaf) {
             if (confirm(`检测到真实游戏根目录位于子目录:\n${data.leaf}\n是否自动替换为该路径？`)) {
               document.getElementById('srcInput').value = data.leaf;
@@ -1262,6 +1304,7 @@
         } else {
           badge.className = 'badge badge-danger';
           badge.innerText = '非标准目录';
+          if (archBox) archBox.style.display = 'none';
         }
       } catch (e) {
         alert('检测出错: ' + e);

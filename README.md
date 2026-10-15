@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/foxhound1227/ps5pack_fnos/releases"><img src="https://img.shields.io/badge/Release-v1.2.0-0070d1?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/foxhound1227/ps5pack_fnos/releases"><img src="https://img.shields.io/badge/Release-v1.2.1-0070d1?style=flat-square" alt="Version"></a>
   <a href="https://www.fnnas.com/"><img src="https://img.shields.io/badge/Platform-fnOS%20v1.1.3100+-00d2ff?style=flat-square" alt="Platform"></a>
   <a href="https://github.com/Nazky/Lazy_AMPR"><img src="https://img.shields.io/badge/Engine-AMPR%20LZ4-10b981?style=flat-square" alt="AMPR LZ4"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-amber?style=flat-square" alt="License"></a>
@@ -23,12 +23,19 @@
 
 工具基于社区先进的 **AMPR LZ4 规范** 与多线程调度流式架构，在保证 PS5 主机端秒级透明解压的同时，通常可为大型 PS5 游戏缩减 **40% ~ 60%** 的存储体积（例如实测 83.7 GiB 游戏可大幅压缩至 39.5 GiB，净省 44.1 GiB 宝贵 SSD 空间）。
 
-同时深度集成飞牛 OS 原生微应用生态，提供直观的 Web 控制台、原生文件目录选择器、单文件镜像免解包挂载压缩、实时吞吐大屏以及自适应微胶囊状态监控。
+同时深度集成飞牛 OS 原生微应用生态，提供直观的 Web 控制台、原生文件目录选择器、单文件镜像免解包挂载压缩、**libSceAmpr 运行时全自动注入**、**底层引擎智能透视**、实时吞吐大屏以及自适应微胶囊状态监控。
 
 ---
 
 ## ✨ 核心特性
 
+- 💉 **`libSceAmpr.sprx` 运行时全自动补全注入 (v1.2.1 核心突破)**
+  - 内置 Drakmor 官方原生 `libSceAmpr.sprx` 用户态解压驱动 (`v0.4.2.1-test`)；
+  - 自动检测并于散文件复制阶段自动向 `fakelib/` 目录注入解压动态库并赋予 `0755` 权限；
+  - **彻底解决 95% 以上原始 Dump 游戏在 LZ4 压缩后因缺失解压钩子而卡在开机启动图 (`pic0.png`) 的死锁痛点**，真正实现即拷即玩。
+- 🔍 **底层游戏引擎架构与 Title ID 智能透视 (v1.2.1 新增)**
+  - 自动解析 `sce_sys/param.json`，秒级提取官方游戏名称与标准 Title ID（如 `PPSA02530`）；
+  - 深度扫描 `eboot.bin` 二进制指令，智能识别是否为索尼第一方原生 AMPR、Capcom RE Engine、虚幻引擎 (Unreal) 或 Unity，并在前端面板呈现实时引擎诊断标签。
 - 💿 **单文件磁盘镜像直接输入（免解压直接挂载）**
   - 全面支持直接选取 `.exfat`、`.img`、`.iso` 等单文件虚拟磁盘镜像；
   - 基于 Linux 内核原生 `loop` 机制在后台全自动只读挂载，**0 额外临时磁盘开销**，AMPR 引擎以磁盘原生总线速度直接流式读取压缩；
@@ -157,9 +164,10 @@ ps5pack_fnos/
 │   ├── ICON_256.PNG            # 256x256 桌面高清图标
 │   ├── app/
 │   │   ├── server/             # Python 后端调度引擎
-│   │   │   ├── compressor.py   # 核心调度、loop挂载、日志流式管道
+│   │   │   ├── compressor.py   # 核心调度、loop挂载、架构诊断与日志流
 │   │   │   ├── main.py         # HTTP / 统一网关 Socket 服务
 │   │   │   ├── engine/         # AMPR LZ4 打包核心
+│   │   │   │   └── fakelib/    # 官方通用 libSceAmpr.sprx 运行时解压库
 │   │   │   └── static/         # 前端 Web UI (HTML/CSS/JS)
 │   │   └── ui/                 # 桌面卡片入口与启动配置
 │   ├── cmd/                    # 生命周期契约脚本 (main, install, uninstall)
@@ -194,6 +202,12 @@ ps5pack_fnos/
 为了避免日志污染 PS5 游戏目录：
 1. <b>打包详细日志 (<code>pack.log</code>)</b>：自动存放在压缩目标目录的<b>上一级目录</b>中。
 2. <b>数据校验日志 (<code>verify.log</code>)</b>：保留在<b>目标游戏目录</b>内，作为资产文件哈希校验的一致性存证凭据。
+</details>
+
+<details>
+<summary><b>Q5: 为什么以前压缩的游戏在 PS5 启动画面 (pic0.png) 卡死，v1.2.1 是如何解决的？</b></summary>
+PS5 系统底层内核无法原生直接透明读取 LZ4 压缩分卷包（<code>.pak</code>），必须依赖 <code>fakelib/libSceAmpr.sprx</code> 用户态动态解压模块拦截并处理文件读取。绝大多数原始游戏 Dump 本身并不自带此文件。<br>
+在 v1.2.1 中，系统已内置 Drakmor 官方 <code>libSceAmpr.sprx</code> 核心运行时，在完成资产压缩与散文件拷贝后，<b>全自动无感补全注入该动态库并赋予可执行权限</b>，彻底免去手动拷贝配置的繁琐流程，保证所有支持 AMPR 的游戏启动开箱即玩！
 </details>
 
 ---

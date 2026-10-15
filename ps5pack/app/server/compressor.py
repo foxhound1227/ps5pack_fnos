@@ -273,8 +273,103 @@ class CompressorManager:
         except Exception:
             pass
 
+    def detect_game_architecture(self, game_dir: str) -> Dict[str, Any]:
+        """
+        智能嗅探指定 PS5 游戏目录的底层引擎架构、Title ID 及 AMPR 兼容性
+        对标 Drakmor / theghostonline 架构规范
+        """
+        result = {
+            "title_id": "",
+            "title_name": "",
+            "ampr_native": False,
+            "engine": "Standard PS5",
+            "has_fakelib_ampr": False,
+            "summary": "标准 PS5 游戏"
+        }
+        if not game_dir or not os.path.isdir(game_dir):
+            return result
+
+        # 1. 解析 sce_sys/param.json
+        param_json = os.path.join(game_dir, "sce_sys", "param.json")
+        if os.path.isfile(param_json):
+            try:
+                with open(param_json, "r", encoding="utf-8", errors="ignore") as f:
+                    pj = json.load(f)
+                    result["title_id"] = pj.get("titleId", "") or ""
+                    loc = pj.get("localizedParameters", {})
+                    title = pj.get("titleName", "")
+                    if isinstance(loc, dict):
+                        def_lang = loc.get("defaultLanguage", "")
+                        for lk in ["zh-Hans", "zh-Hant", "zh-CN", "zh-TW", "en-US", "ja-JP", def_lang]:
+                            if lk and isinstance(loc.get(lk), dict) and loc[lk].get("titleName"):
+                                title = loc[lk]["titleName"]
+                                break
+                    result["title_name"] = title or ""
+            except Exception:
+                pass
+
+        # 2. 检查 fakelib/libSceAmpr.sprx 是否已存在
+        fakelib_ampr = os.path.join(game_dir, "fakelib", "libSceAmpr.sprx")
+        result["has_fakelib_ampr"] = os.path.isfile(fakelib_ampr) and os.path.getsize(fakelib_ampr) > 0
+
+        # 3. 扫描 eboot.bin 探测底层引擎与动态链接库
+        eboot_bin = os.path.join(game_dir, "eboot.bin")
+        if os.path.isfile(eboot_bin):
+            try:
+                with open(eboot_bin, "rb") as ef:
+                    header_data = ef.read(15 * 1024 * 1024)
+                if b"libSceAmpr" in header_data:
+                    result["ampr_native"] = True
+                    result["engine"] = "Sony First-Party (AMPR 原生)"
+                    result["summary"] = "索尼第一方 AMPR 原生架构"
+                elif b"via.network" in header_data or b"via.render" in header_data:
+                    result["engine"] = "Capcom RE Engine"
+                    result["summary"] = "卡普空 RE 引擎 (自研专有资产)"
+                elif b"Unreal" in header_data or b"EpicGames" in header_data:
+                    result["engine"] = "Unreal Engine"
+                    result["summary"] = "虚幻引擎 (Unreal Engine)"
+                elif b"il2cpp" in header_data or b"Unity" in header_data:
+                    result["engine"] = "Unity Engine"
+                    result["summary"] = "Unity 引擎 (IL2CPP)"
+                else:
+                    result["engine"] = "Standard PS5 Engine"
+                    result["summary"] = "标准通用游戏引擎"
+            except Exception:
+                pass
+
+        return result
+
+    def _ensure_ampr_runtime(self, out: str) -> bool:
+        """
+        全自动运行时 Hook 守卫：
+        对齐 theghostonline/PS5-LZ4-Compression 机制，
+        无论游戏源目录是否自带 fakelib，一律确保输出目录存在核心解压驱动：
+        fakelib/libSceAmpr.sprx (Drakmor 官方最新 v0.4.2.1 运行时)
+        """
+        fakelib_dir = os.path.join(out, "fakelib")
+        target_sprx = os.path.join(fakelib_dir, "libSceAmpr.sprx")
+        bundled_sprx = os.path.join(ENGINE_DIR, "fakelib", "libSceAmpr.sprx")
+
+        if os.path.isfile(target_sprx) and os.path.getsize(target_sprx) > 0:
+            self.add_log("✓ 目标目录已具备 libSceAmpr.sprx 运行时解压驱动")
+            return True
+
+        if os.path.isfile(bundled_sprx):
+            os.makedirs(fakelib_dir, exist_ok=True)
+            shutil.copy2(bundled_sprx, target_sprx)
+            if os.name != "nt":
+                try:
+                    os.chmod(target_sprx, 0o755)
+                except Exception:
+                    pass
+            self.add_log("🚀 [全自动注入] 已补全 Drakmor 运行时解压驱动: fakelib/libSceAmpr.sprx (v0.4.2.1)")
+            return True
+        else:
+            self.add_log("⚠️ 提示: 未在应用资源库中检测到预置驱动，请确保目标环境已配置 fakelib")
+            return False
+
     def inspect_leaf(self, path: str) -> Dict[str, Any]:
-        """嗅探指定路径是否为 PS5 游戏根目录，支持多层嵌套自动发现"""
+        """嗅探指定路径是否为 PS5 游戏根目录，支持多层嵌套自动发现与架构智能诊断"""
         if not path or not os.path.exists(path):
             return {"valid": False, "reason": "路径不存在", "leaf": path}
 
@@ -316,13 +411,15 @@ class CompressorManager:
             return has_eboot or has_sce_sys or has_d
 
         if check_dir(path):
+            arch = self.detect_game_architecture(path)
             return {
                 "valid": True,
                 "is_leaf": True,
                 "leaf": path,
                 "has_eboot": os.path.isfile(os.path.join(path, "eboot.bin")),
                 "has_sce_sys": os.path.isdir(os.path.join(path, "sce_sys")),
-                "message": "当前路径为标准 PS5 游戏根目录"
+                "arch": arch,
+                "message": f"当前路径为标准 PS5 游戏根目录 · {arch['summary']}"
             }
         
         # 深度探测 3 层子目录
@@ -336,13 +433,15 @@ class CompressorManager:
                 break
         
         if candidate_leaf:
+            arch = self.detect_game_architecture(candidate_leaf)
             return {
                 "valid": True,
                 "is_leaf": False,
                 "leaf": candidate_leaf,
                 "has_eboot": os.path.isfile(os.path.join(candidate_leaf, "eboot.bin")),
                 "has_sce_sys": os.path.isdir(os.path.join(candidate_leaf, "sce_sys")),
-                "message": f"检测到真实游戏根目录位于子目录: {candidate_leaf}"
+                "arch": arch,
+                "message": f"检测到真实游戏根目录位于子目录: {candidate_leaf} · {arch['summary']}"
             }
         
         return {
@@ -525,6 +624,14 @@ class CompressorManager:
                         self.add_log("✓ 验证通过: 目录包含 PS5 游戏特征文件 (eboot.bin / sce_sys)")
                 else:
                     self.add_log(f"⚠️ 警告: {inspection.get('message')}，仍将尝试继续处理")
+
+                # 执行游戏架构智能诊断
+                arch = self.detect_game_architecture(real_src)
+                if arch.get("title_name"):
+                    self.task_state["game_name"] = arch["title_name"]
+                native_str = "是 (第一方/AMPR 原生)" if arch.get("ampr_native") else "否 (第三方专有引擎)"
+                driver_str = "源盘已自带" if arch.get("has_fakelib_ampr") else "将由系统全自动注入"
+                self.add_log(f"🔍 游戏架构诊断: {arch.get('title_name') or self.task_state['game_name']} [{arch.get('title_id') or '无TitleID'}] · 引擎 [{arch.get('engine')}] · 原生AMPR: {native_str} · 解压驱动: {driver_str}")
 
             if self.stop_requested:
                 return
@@ -763,6 +870,10 @@ class CompressorManager:
                 copied_cnt, skipped_cnt = self._copy_loose_files(real_src, out, pack_meta)
                 self.task_state["loose_copied"] = copied_cnt
                 self.add_log(f"✓ 成功复制 {copied_cnt} 个 Loose 散文件 (跳过 {skipped_cnt} 个)")
+
+            # --- 步骤 7: 全自动运行时 Hook 守卫 (注入 Drakmor libSceAmpr.sprx 运行时驱动) ---
+            if not self.stop_requested:
+                self._ensure_ampr_runtime(out)
 
             # --- 完成总结 ---
             end_ts = time.time()
