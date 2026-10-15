@@ -23,8 +23,37 @@ STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 GITHUB_REPO = "foxhound1227/ps5pack_fnos"
 UPDATE_CACHE = {"timestamp": 0, "data": None}
 
+VERSION_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "version.txt")
+
 def get_app_version() -> str:
-    """读取 manifest 中的版本号"""
+    """读取应用版本号：优先同级 server/version.txt，其次 fnOS /var/apps/ps5pack/manifest，再遍历父级目录"""
+    # 1. 优先读取同级 server/version.txt
+    if os.path.isfile(VERSION_FILE):
+        try:
+            with open(VERSION_FILE, "r", encoding="utf-8") as f:
+                ver = f.read().strip()
+                if ver:
+                    return ver
+        except Exception:
+            pass
+
+    # 2. 读取飞牛 fnOS 标准包清单 /var/apps/ps5pack/manifest 及环境变量
+    fnos_manifests = [
+        "/var/apps/ps5pack/manifest",
+        os.path.expandvars("$TRIM_PKGDIR/manifest")
+    ]
+    for mpath in fnos_manifests:
+        if os.path.isfile(mpath):
+            try:
+                with open(mpath, "r", encoding="utf-8") as f:
+                    for line in f:
+                        parts = line.strip().split("=", 1)
+                        if len(parts) == 2 and parts[0].strip() == "version":
+                            return parts[1].strip()
+            except Exception:
+                pass
+
+    # 3. 本地开发环境：向上遍历 4 级目录查找 manifest
     curr = os.path.dirname(os.path.abspath(__file__))
     for _ in range(4):
         cand = os.path.join(curr, "manifest")
@@ -32,12 +61,14 @@ def get_app_version() -> str:
             try:
                 with open(cand, "r", encoding="utf-8") as f:
                     for line in f:
-                        if line.startswith("version="):
-                            return line.strip().split("=", 1)[1]
+                        parts = line.strip().split("=", 1)
+                        if len(parts) == 2 and parts[0].strip() == "version":
+                            return parts[1].strip()
             except Exception:
                 pass
         curr = os.path.dirname(curr)
-    return "1.2.0"
+
+    return "1.2.1"
 
 class AppRequestHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
