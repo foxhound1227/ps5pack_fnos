@@ -1,5 +1,5 @@
 appname=ps5pack
-version=1.2.5
+version=1.2.6
 display_name=PS5游戏压缩工具
 desc=基于 AMPR LZ4 协议的 PS5 游戏资产高速压缩工具。支持多线程并发、4-Lane 资产分流、自动补齐 loose 启动散文件、完整性校验、实时大屏监控与 NAS 目录树快速选择。
 source=thirdparty
@@ -11,6 +11,6 @@ desktop_applaunchname=ps5pack.main
 ctl_stop=true
 micro_app=true
 os_min_version=1.1.3100
-changelog=体积统计机制深度重构：支持以单文件镜像(.exfat/.img等)或全游戏目录递归真实大小作为原始体积基准，并在打包/散文件直通/驱动注入完成后全量比对最终产物物理体积，精准计算真实落盘节省空间与比例。
+changelog=1. Windows 独立免安装绿色版首发（零依赖即解即用，支持 Windows 原生选择文件夹与全盘驱动器遍历）；2. libSceAmpr.sprx 运行时解压驱动版本智能比对、缺失自动注入与低版本强制替换升级；3. 架构分析升级为 128MB 流式扫描，秒级识别卡普空 RE 引擎等 200MB+ 大作。
 
 

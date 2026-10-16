@@ -32,3 +32,8 @@ file_picker_docs.txt
 fnos_llms_full.txt
 fnos_docs.md
 ALL_DOCS_DECODED.md
+
+# Windows Build Artifacts & Packages
+dist_windows/
+*.zip
+*.spec

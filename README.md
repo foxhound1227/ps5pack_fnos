@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/foxhound1227/ps5pack_fnos/releases"><img src="https://img.shields.io/badge/Release-v1.2.5-0070d1?style=flat-square" alt="Version"></a>
-  <a href="https://www.fnnas.com/"><img src="https://img.shields.io/badge/Platform-fnOS%20v1.1.3100+-00d2ff?style=flat-square" alt="Platform"></a>
+  <a href="https://github.com/foxhound1227/ps5pack_fnos/releases"><img src="https://img.shields.io/badge/Release-v1.2.6-0070d1?style=flat-square" alt="Version"></a>
+  <a href="https://www.fnnas.com/"><img src="https://img.shields.io/badge/Platform-fnOS%20%7C%20Windows%2010%2F11-00d2ff?style=flat-square" alt="Platform"></a>
   <a href="https://github.com/Nazky/Lazy_AMPR"><img src="https://img.shields.io/badge/Engine-AMPR%20LZ4-10b981?style=flat-square" alt="AMPR LZ4"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-amber?style=flat-square" alt="License"></a>
 </p>
@@ -19,16 +19,25 @@
 
 ## 🌟 项目简介
 
-**PS5 AMPR LZ4 游戏压缩工具** 是一款运行于**飞牛私有云 (fnOS)** 原生环境中的高性能 PS5 游戏资产打包与压缩套件。
+**PS5 AMPR LZ4 游戏压缩工具** 是一款多平台支持的高性能 PS5 游戏资产打包与压缩套件（原生支持**飞牛私有云 fnOS** 与 **Windows 10/11 本地免安装独立版**）。
 
 工具基于社区先进的 **AMPR LZ4 规范** 与多线程调度流式架构，在保证 PS5 主机端秒级透明解压的同时，通常可为大型 PS5 游戏缩减 **40% ~ 60%** 的存储体积（例如实测 83.7 GiB 游戏可大幅压缩至 39.5 GiB，净省 44.1 GiB 宝贵 SSD 空间）。
 
-同时深度集成飞牛 OS 原生微应用生态，提供直观的 Web 控制台、原生文件目录选择器、单文件镜像免解包挂载压缩、**libSceAmpr 运行时全自动注入**、**底层引擎智能透视**、**多 Profile 智能级联匹配**、实时吞吐大屏以及自适应微胶囊状态监控。
+同时提供现代化 PS5 质感 Web 控制台、原生文件夹选择器、单文件镜像免解包挂载压缩、**libSceAmpr 运行时全自动版本比对与智能替换升级**、**底层引擎智能透视**、**多 Profile 智能级联匹配**、实时吞吐大屏以及自适应微胶囊状态监控。
 
 ---
 
 ## ✨ 核心特性
 
+- 💻 **多平台支持：Windows 本地独立免安装绿色版首发 (v1.2.6)**
+  - **零 Python 依赖开箱即用**：完整内置 Python 运行时、官方 `lz4` 高性能 C 扩展加速模块与多进程调度内核，在本地 Windows 电脑解压即可满血利用 PC 高性能 CPU（Intel i7/i9 / AMD Ryzen）极速压缩；
+  - **双击一键启动 + 自动唤起浏览器**：运行 `启动PS5压缩工具.bat` 自动启动本地后台服务，并在 0.8s 内自动调用默认浏览器打开 Web 控制大屏；
+  - **Windows 系统原生文件夹选择器**：支持点击“浏览”呼出 Windows 经典文件夹选择对话框，告别浏览器安全限制，路径选择直观顺畅；
+  - **全盘物理驱动器自由穿梭**：根目录视图自适应探测并呈现所有 Windows 本地磁盘（`本地磁盘 (C:)`、`本地磁盘 (D:)` 等）与移动硬盘。
+- 🛡️ **libSceAmpr.sprx 运行时解压驱动版本比对与智能替换升级 (v1.2.6)**
+  - **深度版本解析**：支持流式解析 SPRX 内部 Drakmor 签名版本号及语义化版本号（Semver）；
+  - **智能替换升级**：若目标目录缺失驱动，全自动注入 Drakmor 官方最新版（v0.4.2.1）；若源盘残留早期不支持 LZ4 的旧版驱动（如 v0.3.x 或 224KB 早期版本），**自动执行覆盖替换升级**，彻底防止游戏在 PS5 开机封面（`pic0.png`）死锁；若驱动已是最新或更高，则予以安全保留；
+  - **128MB 流式大作架构透视**：升级架构分析引擎为 128MB 流式扫描，秒级识别 200MB+ 大作（如卡普空 RE 引擎《鬼武者：剑之道-PPSA27836》）的 `libSceAmpr` 符号。
 - ⚖️ **全量真实落盘体积精准对比与统计 (v1.2.5)**
   - **原始基准自适应识别**：当输入为 `.exfat`、`.img`、`.iso` 等单文件镜像时，直接读取该镜像的物理落盘文件大小作为基准；若输入为解包目录，则递归扫描全目录全量文件总大小；
   - **产物全量物理复核**：压缩完成、散文件直通复制与 `fakelib` 驱动注入完成后，递归统计输出目录全量文件落盘总字节数（涵盖 `.pak`、`ampr_assets.index`、`libSceAmpr.sprx`、`eboot.bin`、音视频 Loose 资产等）；

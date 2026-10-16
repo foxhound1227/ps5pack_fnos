@@ -173,12 +173,71 @@ class ImageMountContext:
                 pass
             self.is_mounted = False
 
-ENGINE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "engine")
+SERVER_DIR = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+ENGINE_DIR = os.path.join(SERVER_DIR, "engine")
 DEFAULT_PROFILE_PATH = os.path.join(ENGINE_DIR, "generic_ps5.toml")
 PROFILES_DIR = os.path.join(ENGINE_DIR, "profiles")
 PROFILES_INDEX = os.path.join(PROFILES_DIR, "index.json")
 BUILD_INDEX_PY = os.path.join(ENGINE_DIR, "build_ampr_index.py")
 AMPR_PACK_PY = os.path.join(ENGINE_DIR, "ampr_pack.py")
+
+def get_subprocess_cmd(py_bin: str, script_path: str, internal_flag: str, sub_args: list) -> list:
+    """自适应获取子进程执行命令，完美兼容直接 Python 源码运行及 PyInstaller EXE 单文件模式"""
+    if getattr(sys, "frozen", False):
+        return [py_bin, internal_flag] + sub_args
+    return [py_bin, script_path] + sub_args
+
+def get_sprx_version(sprx_path: str) -> Optional[str]:
+    """
+    深度解析 libSceAmpr.sprx 内部的语义化版本号
+    支持匹配格式：
+    1. '0.4.2.1 (c) Drakmor'
+    2. '[AMPR_EMU] name=libSceAmpr version=0.4.2.1'
+    3. 语义化版本正则: 0.x.x 或 0.x.x.x
+    """
+    if not sprx_path or not os.path.isfile(sprx_path):
+        return None
+    try:
+        with open(sprx_path, "rb") as f:
+            data = f.read(4 * 1024 * 1024)
+
+        # 1. 优先匹配带 Drakmor 签名格式: e.g. "0.4.2.1 (c) Drakmor"
+        m = re.search(rb'(\d+(?:\.\d+)+)\s*\(c\)\s*Drakmor', data, re.IGNORECASE)
+        if m:
+            return m.group(1).decode("ascii", errors="ignore")
+
+        # 2. 匹配 [AMPR_EMU] 内部版本声明: e.g. "[AMPR_EMU] name=libSceAmpr version=0.4.2.1"
+        m = re.search(rb'\[AMPR_EMU\][^\x00]*?(?:version=|\bv)?(\d+(?:\.\d+)+)', data, re.IGNORECASE)
+        if m:
+            return m.group(1).decode("ascii", errors="ignore")
+
+        # 3. 匹配常见 0.x.x.x 或 0.x.x 格式
+        candidates = re.findall(rb'\b(0\.\d+(?:\.\d+)+)\b', data)
+        if candidates:
+            return candidates[0].decode("ascii", errors="ignore")
+
+        # 4. 匹配任何 x.y.z 或 x.y.z.w 版本号 (排除常见本地 IP)
+        all_ver = re.findall(rb'\b(\d+\.\d+\.\d+(?:\.\d+)?)\b', data)
+        for cand in all_ver:
+            cand_str = cand.decode("ascii", errors="ignore")
+            parts = cand_str.split(".")
+            if len(parts) >= 3 and not (parts[0] in ("127", "192", "10", "172", "255", "0") and parts[1] in ("0", "168", "255")):
+                return cand_str
+    except Exception:
+        pass
+    return None
+
+def version_to_tuple(ver_str: Optional[str]) -> tuple:
+    """将版本号字符串拆解为可进行大小比较的整型元组，例如 '0.4.2.1' -> (0, 4, 2, 1)"""
+    if not ver_str:
+        return ()
+    nums = []
+    for part in re.findall(r'\d+', ver_str):
+        try:
+            nums.append(int(part))
+        except ValueError:
+            pass
+    return tuple(nums)
 
 class CompressorManager:
     def __init__(self, data_dir: Optional[str] = None):
@@ -399,32 +458,76 @@ class CompressorManager:
             except Exception:
                 pass
 
-        # 2. 检查 fakelib/libSceAmpr.sprx 是否已存在
+        # 2. 检查 fakelib/libSceAmpr.sprx 是否已存在并比对版本
         fakelib_ampr = os.path.join(game_dir, "fakelib", "libSceAmpr.sprx")
-        result["has_fakelib_ampr"] = os.path.isfile(fakelib_ampr) and os.path.getsize(fakelib_ampr) > 0
+        bundled_sprx = os.path.join(ENGINE_DIR, "fakelib", "libSceAmpr.sprx")
+        bundled_ver = get_sprx_version(bundled_sprx) or "0.4.2.1"
+        bundled_tuple = version_to_tuple(bundled_ver)
+
+        has_fakelib = os.path.isfile(fakelib_ampr) and os.path.getsize(fakelib_ampr) > 0
+        result["has_fakelib_ampr"] = has_fakelib
+        result["bundled_ampr_ver"] = bundled_ver
+        if has_fakelib:
+            target_ver = get_sprx_version(fakelib_ampr)
+            result["fakelib_ampr_ver"] = target_ver
+            target_tuple = version_to_tuple(target_ver)
+            result["fakelib_ampr_upgrade"] = (not target_tuple or target_tuple < bundled_tuple)
+        else:
+            result["fakelib_ampr_ver"] = None
+            result["fakelib_ampr_upgrade"] = False
 
         # 3. 扫描 Insomniac 引擎特征布局
         if os.path.isfile(os.path.join(game_dir, "toc")) and os.path.isfile(os.path.join(game_dir, "dag")) and os.path.isdir(os.path.join(game_dir, "d")):
             result["engine"] = "Insomniac Games"
             result["summary"] = "Insomniac 引擎架构 (漫威蜘蛛侠/金刚狼)"
 
-        # 4. 扫描 eboot.bin 探测底层引擎与动态链接库
+        # 4. 扫描 eboot.bin 探测底层引擎与动态链接库 (流式深度扫描前 128 MB)
         eboot_bin = os.path.join(game_dir, "eboot.bin")
         if os.path.isfile(eboot_bin):
             try:
+                has_ampr = False
+                has_via = False
+                has_unreal = False
+                has_unity = False
                 with open(eboot_bin, "rb") as ef:
-                    header_data = ef.read(15 * 1024 * 1024)
-                if b"libSceAmpr" in header_data:
+                    while True:
+                        chunk = ef.read(16 * 1024 * 1024)
+                        if not chunk:
+                            break
+                        if b"libSceAmpr" in chunk:
+                            has_ampr = True
+                        if b"via.network" in chunk or b"via.render" in chunk:
+                            has_via = True
+                        if b"Unreal" in chunk or b"EpicGames" in chunk:
+                            has_unreal = True
+                        if b"il2cpp" in chunk or b"Unity" in chunk:
+                            has_unity = True
+                        if has_ampr and (has_via or has_unreal or has_unity):
+                            break
+                        if ef.tell() >= 128 * 1024 * 1024:
+                            break
+
+                if has_ampr:
                     result["ampr_native"] = True
-                    result["engine"] = "Sony First-Party (AMPR 原生)"
-                    result["summary"] = "索尼第一方 AMPR 原生架构"
-                elif b"via.network" in header_data or b"via.render" in header_data:
+                    if has_via:
+                        result["engine"] = "Capcom RE Engine (AMPR 接入)"
+                        result["summary"] = "卡普空 RE 引擎 (原生支持 AMPR)"
+                    elif has_unreal:
+                        result["engine"] = "Unreal Engine (AMPR 接入)"
+                        result["summary"] = "虚幻引擎 (原生支持 AMPR)"
+                    elif has_unity:
+                        result["engine"] = "Unity Engine (AMPR 接入)"
+                        result["summary"] = "Unity 引擎 (原生支持 AMPR)"
+                    else:
+                        result["engine"] = "Sony First-Party (AMPR 原生)"
+                        result["summary"] = "索尼第一方 AMPR 原生架构"
+                elif has_via:
                     result["engine"] = "Capcom RE Engine"
                     result["summary"] = "卡普空 RE 引擎 (自研专有资产)"
-                elif b"Unreal" in header_data or b"EpicGames" in header_data:
+                elif has_unreal:
                     result["engine"] = "Unreal Engine"
                     result["summary"] = "虚幻引擎 (Unreal Engine)"
-                elif b"il2cpp" in header_data or b"Unity" in header_data:
+                elif has_unity:
                     result["engine"] = "Unity Engine"
                     result["summary"] = "Unity 引擎 (IL2CPP)"
                 elif result["engine"] == "Standard PS5":
@@ -466,32 +569,56 @@ class CompressorManager:
 
     def _ensure_ampr_runtime(self, out: str) -> bool:
         """
-        全自动运行时 Hook 守卫：
-        对齐 theghostonline/PS5-LZ4-Compression 机制，
-        无论游戏源目录是否自带 fakelib，一律确保输出目录存在核心解压驱动：
-        fakelib/libSceAmpr.sprx (Drakmor 官方最新 v0.4.2.1 运行时)
+        全自动运行时 Hook 守卫与版本智能比对替换：
+        对齐 Drakmor / theghostonline 最新规范，
+        1. 若目标目录不存在 fakelib/libSceAmpr.sprx，直接全自动注入；
+        2. 若目标目录已存在 fakelib/libSceAmpr.sprx，深度比对版本号：
+           - 若现有版本低于内置驱动（或为无法识别的早期旧版，不支持 LZ4），强制替换升级；
+           - 若现有版本与内置一致或更高，保留现有驱动。
         """
         fakelib_dir = os.path.join(out, "fakelib")
         target_sprx = os.path.join(fakelib_dir, "libSceAmpr.sprx")
         bundled_sprx = os.path.join(ENGINE_DIR, "fakelib", "libSceAmpr.sprx")
 
-        if os.path.isfile(target_sprx) and os.path.getsize(target_sprx) > 0:
-            self.add_log("✓ 目标目录已具备 libSceAmpr.sprx 运行时解压驱动")
-            return True
+        if not os.path.isfile(bundled_sprx):
+            self.add_log("⚠️ 提示: 未在应用资源库中检测到预置驱动，请确保目标环境已配置 fakelib")
+            return False
 
-        if os.path.isfile(bundled_sprx):
-            os.makedirs(fakelib_dir, exist_ok=True)
+        bundled_ver = get_sprx_version(bundled_sprx) or "0.4.2.1"
+        bundled_tuple = version_to_tuple(bundled_ver)
+
+        os.makedirs(fakelib_dir, exist_ok=True)
+
+        # 场景 1: 目标不存在解压驱动 -> 直接注入
+        if not os.path.isfile(target_sprx) or os.path.getsize(target_sprx) == 0:
             shutil.copy2(bundled_sprx, target_sprx)
             if os.name != "nt":
                 try:
                     os.chmod(target_sprx, 0o755)
                 except Exception:
                     pass
-            self.add_log("🚀 [全自动注入] 已补全 Drakmor 运行时解压驱动: fakelib/libSceAmpr.sprx (v0.4.2.1)")
+            self.add_log(f"🚀 [全自动注入] 目标未包含解压驱动，已自动注入 Drakmor 官方运行时: fakelib/libSceAmpr.sprx (v{bundled_ver})")
+            return True
+
+        # 场景 2: 目标已存在解压驱动 -> 提取版本号进行深度比对
+        target_ver = get_sprx_version(target_sprx)
+        target_tuple = version_to_tuple(target_ver)
+
+        if not target_tuple or target_tuple < bundled_tuple:
+            # 目标版本过低（或为早期无版本标识的旧版，极可能不支持 LZ4 分卷解压），执行覆盖升级
+            shutil.copy2(bundled_sprx, target_sprx)
+            if os.name != "nt":
+                try:
+                    os.chmod(target_sprx, 0o755)
+                except Exception:
+                    pass
+            old_desc = f"v{target_ver}" if target_ver else "旧版/未知版本"
+            self.add_log(f"🔄 [自动升级替换] 检测到现有驱动版本过低 ({old_desc} < v{bundled_ver})，已自动替换升级为最新官方驱动: fakelib/libSceAmpr.sprx (v{bundled_ver})")
             return True
         else:
-            self.add_log("⚠️ 提示: 未在应用资源库中检测到预置驱动，请确保目标环境已配置 fakelib")
-            return False
+            ver_desc = f"v{target_ver}" if target_ver else f"v{bundled_ver}"
+            self.add_log(f"✓ 目标目录已具备最新 libSceAmpr.sprx 运行时解压驱动 ({ver_desc})")
+            return True
 
     def inspect_leaf(self, path: str) -> Dict[str, Any]:
         """嗅探指定路径是否为 PS5 游戏根目录，支持多层嵌套自动发现与架构智能诊断"""
@@ -788,7 +915,7 @@ class CompressorManager:
                 shutil.copy2(index_in_game, index_target)
             else:
                 self.add_log(f"  执行 build_ampr_index.py 生成索引...")
-                cmd = [py_bin, BUILD_INDEX_PY, real_src, "-o", index_target]
+                cmd = get_subprocess_cmd(py_bin, BUILD_INDEX_PY, "--internal-build-index", [real_src, "-o", index_target])
                 idx_kwargs = {
                     "stdout": subprocess.PIPE,
                     "stderr": subprocess.PIPE,
@@ -844,15 +971,16 @@ class CompressorManager:
                 except Exception:
                     pass
             
-            cmd_pack = [
-                py_bin, AMPR_PACK_PY, "pack",
+            pack_sub_args = [
+                "pack",
                 "--root", real_src,
                 "--ampr-index", index_target,
                 "--output", out,
                 "--config", profile_target
             ]
             for pattern in SAFETY_EXCLUSIONS:
-                cmd_pack.extend(["--exclude", pattern])
+                pack_sub_args.extend(["--exclude", pattern])
+            cmd_pack = get_subprocess_cmd(py_bin, AMPR_PACK_PY, "--internal-ampr-pack", pack_sub_args)
 
             with open(pack_log_file, "w", encoding="utf-8") as log_f, open(pack_tmp_json, "w", encoding="utf-8") as json_f:
                 popen_kwargs = {
@@ -930,11 +1058,11 @@ class CompressorManager:
                 
                 verify_index = os.path.join(out, "ampr_assets.index")
                 verify_log_file = os.path.join(out, "verify.log")
-                cmd_verify = [
-                    py_bin, AMPR_PACK_PY, "verify",
+                cmd_verify = get_subprocess_cmd(py_bin, AMPR_PACK_PY, "--internal-ampr-pack", [
+                    "verify",
                     "--index", verify_index,
                     "--root", real_src
-                ]
+                ])
                 v_popen_kwargs = {
                     "stdout": subprocess.PIPE,
                     "stderr": subprocess.PIPE,
@@ -1269,9 +1397,47 @@ class CompressorManager:
 
         return copied, skipped
 
+    def pick_folder_native(self, initial_dir: str = "") -> str:
+        """调用本地原生选择文件夹对话框 (Windows/系统原生弹窗)"""
+        if os.name == "nt":
+            try:
+                # 1. 优先尝试使用标准库 tkinter (原生极速响应)
+                import tkinter as tk
+                from tkinter import filedialog
+                root = tk.Tk()
+                root.withdraw()
+                root.attributes('-topmost', True)
+                init_d = initial_dir if (initial_dir and os.path.exists(initial_dir)) else None
+                picked = filedialog.askdirectory(title="请选择 PS5 游戏目录或输出目录", initialdir=init_d)
+                root.destroy()
+                if picked and os.path.exists(picked):
+                    return os.path.abspath(picked).replace("\\", "/")
+            except Exception:
+                pass
+
+            try:
+                # 2. 降级使用 PowerShell System.Windows.Forms 对话框
+                ps_script = (
+                    "Add-Type -AssemblyName System.Windows.Forms; "
+                    "$f = New-Object System.Windows.Forms.FolderBrowserDialog; "
+                    "$f.Description = '请选择 PS5 游戏目录或输出目录'; "
+                    "$f.ShowNewFolderButton = $true; "
+                )
+                if initial_dir and os.path.exists(initial_dir):
+                    ps_script += f"$f.SelectedPath = '{initial_dir}'; "
+                ps_script += "if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $f.SelectedPath }"
+                cmd = ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script]
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+                if res.returncode == 0:
+                    picked = res.stdout.strip()
+                    if picked and os.path.exists(picked):
+                        return os.path.abspath(picked).replace("\\", "/")
+            except Exception:
+                pass
+        return ""
+
     def browse_fs(self, target_dir: Optional[str] = None) -> Dict[str, Any]:
-        """安全列出 NAS 目录用于文件选择器，彻底过滤 Linux 底层系统目录与授权杂项，只呈现 NAS 存储空间卷"""
-        # 探测飞牛 NAS 存储空间卷 (/vol1 ~ /vol16)
+        """安全列出文件与目录用于选择器，跨平台适配 Linux 存储卷及 Windows 本地全盘符"""
         volumes = []
         if os.name != "nt":
             for v_idx in range(1, 17):
@@ -1279,38 +1445,58 @@ class CompressorManager:
                 if os.path.exists(v_path):
                     volumes.append(v_path)
         else:
-            volumes = [os.path.abspath(os.sep)]
+            # Windows 环境下探测所有可用物理盘符 (C:, D:, E:, F:, G:... 等)
+            import string
+            for letter in string.ascii_uppercase:
+                drv = f"{letter}:\\"
+                if os.path.exists(drv):
+                    volumes.append(f"{letter}:/")
 
-        # 如果未传入目标目录或为根目录或不存在，默认呈现“NAS 纯净根视图”
+        # 如果未传入目标目录或为根目录或不存在，默认呈现“纯净根视图”
         is_root_view = False
         if not target_dir or target_dir in ("/", "\\") or not os.path.exists(target_dir):
             is_root_view = True
             target_dir = "/"
-            if os.name == "nt":
-                target_dir = os.path.abspath(os.sep)
 
         items = []
 
-        if is_root_view and os.name != "nt":
-            # 在 NAS 根视图下：只展示纯粹的 NAS 存储空间卷，彻底删除授权目录杂项
-            for v_path in volumes:
-                v_num = re.findall(r'\d+', v_path)
-                display_name = f"存储空间 {v_num[0]} ({v_path})" if v_num else f"存储卷 ({v_path})"
-                items.append({
-                    "name": display_name,
-                    "path": v_path,
-                    "is_dir": True,
-                    "is_volume": True,
-                    "size": 0
-                })
-            
-            return {
-                "current": "/",
-                "parent": "",
-                "items": items,
-                "volumes": volumes,
-                "is_nas_root": True
-            }
+        if is_root_view:
+            if os.name != "nt":
+                # 在 NAS 根视图下：展示纯粹的 NAS 存储空间卷
+                for v_path in volumes:
+                    v_num = re.findall(r'\d+', v_path)
+                    display_name = f"存储空间 {v_num[0]} ({v_path})" if v_num else f"存储卷 ({v_path})"
+                    items.append({
+                        "name": display_name,
+                        "path": v_path,
+                        "is_dir": True,
+                        "is_volume": True,
+                        "size": 0
+                    })
+                return {
+                    "current": "/",
+                    "parent": "",
+                    "items": items,
+                    "volumes": volumes,
+                    "is_nas_root": True
+                }
+            else:
+                # 在 Windows 根视图下：直接展示所有可用本地磁盘 (C:, D:, E: 等)
+                for v_path in volumes:
+                    items.append({
+                        "name": f"本地磁盘 ({v_path[:2]})",
+                        "path": v_path,
+                        "is_dir": True,
+                        "is_volume": True,
+                        "size": 0
+                    })
+                return {
+                    "current": "/",
+                    "parent": "",
+                    "items": items,
+                    "volumes": volumes,
+                    "is_nas_root": True
+                }
 
         # 针对具体目录的扫描：过滤底层系统黑名单与 @ 系统内部私有目录
         SYSTEM_BLACKLIST = {

@@ -659,7 +659,7 @@
       <div>
         <div style="display: flex; align-items: center; gap: 8px;">
           <div class="brand-title">PS5 AMPR LZ4 游戏压缩工具</div>
-          <span class="version-tag" id="appVersionBadge" title="当前安装版本，点击检查更新" onclick="checkUpdate(true)">v1.2.5</span>
+          <span class="version-tag" id="appVersionBadge" title="当前安装版本，点击检查更新" onclick="checkUpdate(true)">v1.2.6</span>
         </div>
         <div class="brand-subtitle">高性能多分卷无损压缩 • 专为飞牛 fnOS 优化</div>
       </div>
@@ -1051,6 +1051,28 @@
           console.log('飞牛原生选择器未完成:', err);
         }
       }
+
+      // 2. 在 Windows 或普通浏览器环境下，尝试调用后端原生文件夹选择器
+      try {
+        const currVal = document.getElementById(field + 'Input').value.trim();
+        const res = await fetch(getApiUrl('/api/pick_folder'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ initial: currVal })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.path) {
+            document.getElementById(field + 'Input').value = data.path;
+            saveFormCache();
+            if (field === 'src') checkLeaf();
+            closeFilePicker();
+            return true;
+          }
+        }
+      } catch (e) {
+        console.log('调用系统原生选择器未执行:', e);
+      }
       return false;
     }
 
@@ -1299,9 +1321,14 @@
               pillsHtml += `<span class="live-pill" style="color: #facc15;" title="${escapeHtml(arch.profile.desc || '')}">📋 方案: ${escapeHtml(arch.profile.label)}</span>`;
             }
             if (arch.has_fakelib_ampr) {
-              pillsHtml += `<span class="live-pill" style="color: #34d399;">✓ 源盘已内置解压驱动</span>`;
+              if (arch.fakelib_ampr_upgrade) {
+                const oldV = arch.fakelib_ampr_ver ? `v${arch.fakelib_ampr_ver}` : '旧版/未知';
+                pillsHtml += `<span class="live-pill" style="color: #fbbf24;" title="源盘解压驱动版本过低，打包时将自动替换升级为最新驱动">🔄 驱动需升级 (${escapeHtml(oldV)} &lt; v${escapeHtml(arch.bundled_ampr_ver || '0.4.2.1')})</span>`;
+              } else {
+                pillsHtml += `<span class="live-pill" style="color: #34d399;">✓ 源盘解压驱动已是最新 (${escapeHtml(arch.fakelib_ampr_ver ? 'v' + arch.fakelib_ampr_ver : '最新')})</span>`;
+              }
             } else {
-              pillsHtml += `<span class="live-pill" style="color: #a5b4fc;">🚀 打包将自动注入 fakelib/libSceAmpr.sprx (v0.4.2.1)</span>`;
+              pillsHtml += `<span class="live-pill" style="color: #a5b4fc;">🚀 打包将自动注入 fakelib/libSceAmpr.sprx (v${escapeHtml(arch.bundled_ampr_ver || '0.4.2.1')})</span>`;
             }
             pillsEl.innerHTML = pillsHtml;
           }
@@ -1385,13 +1412,11 @@
     async function openFilePicker(field) {
       activePickerField = field;
       
-      // 在飞牛桌面 iframe 下，首先尝试呼出系统原生“选择文件夹”
-      if (fnSdk && window.parent !== window) {
-        const picked = await pickNativeFolder(field);
-        if (picked) return;
-      }
+      // 1. 优先尝试呼出系统原生“选择文件夹”对话框 (飞牛桌面或 Windows/本地环境)
+      const picked = await pickNativeFolder(field);
+      if (picked) return;
 
-      // 降级使用内置纯净 NAS 目录浏览器
+      // 2. 降级使用内置纯净目录浏览器
       const initial = document.getElementById(field + 'Input').value.trim() || '/';
       document.getElementById('fileModal').style.display = 'flex';
       loadDirectory(initial);
@@ -1405,19 +1430,25 @@
       const bar = document.getElementById('breadcrumbBar');
       const clean = path.replace(/\\/g, '/').replace(/\/+$/, '');
       if (!clean || clean === '/') {
-        bar.innerHTML = '<span class="breadcrumb-item" onclick="loadDirectory(\'/\')">🏠 NAS 存储空间</span>';
+        bar.innerHTML = '<span class="breadcrumb-item" onclick="loadDirectory(\'/\')">🏠 根目录</span>';
         return;
       }
       const parts = clean.split('/').filter(Boolean);
-      let html = '<span class="breadcrumb-item" onclick="loadDirectory(\'/\')">🏠 NAS 存储空间</span>';
+      let html = '<span class="breadcrumb-item" onclick="loadDirectory(\'/\')">🏠 根目录</span>';
       let acc = '';
       for (let i = 0; i < parts.length; i++) {
-        acc += '/' + parts[i];
+        if (i === 0 && /^[a-zA-Z]:$/i.test(parts[0])) {
+          acc = parts[0] + '/';
+        } else {
+          acc += (acc.endsWith('/') ? '' : '/') + parts[i];
+        }
         const thisPath = acc;
         let displayName = parts[i];
         if (parts[i].startsWith('vol')) {
           const num = parts[i].replace('vol', '');
           displayName = `存储空间 ${num}`;
+        } else if (/^[a-zA-Z]:$/i.test(parts[i])) {
+          displayName = `本地磁盘 (${parts[i]})`;
         }
         html += `<span class="breadcrumb-sep">❯</span><span class="breadcrumb-item" onclick="loadDirectory('${thisPath}')">${displayName}</span>`;
       }
@@ -1427,12 +1458,14 @@
     function renderVolumes(volumes) {
       const container = document.getElementById('volChipsContainer');
       let defaultVols = ['/', '/vol1', '/vol2', '/vol3', '/vol4'];
-      let allVols = [...new Set([...defaultVols, ...(volumes || [])])];
+      let allVols = [...new Set([...(volumes && volumes.length ? volumes : defaultVols)])];
       container.innerHTML = allVols.map(v => {
-        let label = v === '/' ? '全部存储空间' : v;
+        let label = v === '/' ? '全部' : v;
         if (v.startsWith('/vol')) {
           const num = v.replace('/vol', '');
           label = `存储空间 ${num}`;
+        } else if (/^[a-zA-Z]:/i.test(v)) {
+          label = `磁盘 (${v.substring(0, 2)})`;
         }
         return `<button class="chip-btn" onclick="loadDirectory('${v}')">${label}</button>`;
       }).join('');
@@ -1620,7 +1653,7 @@
     }
 
     // === 版本管理与更新检测 ===
-    let appVersion = '1.2.5';
+    let appVersion = '1.2.6';
     let latestReleaseData = null;
 
     // 版本号对比: 返回 1 (v1 > v2), -1 (v1 < v2), 0 (相等)

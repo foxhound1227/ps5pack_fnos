@@ -17,13 +17,31 @@ import urllib.request
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from typing import Dict, Any, Optional, List
 
+# 内部子命令分发 (支持 PyInstaller 单文件打包模式下自调用构建索引与打包)
+_BASE_DIR = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+if len(sys.argv) > 1 and sys.argv[1] == "--internal-build-index":
+    sys.argv.pop(1)
+    engine_dir = os.path.join(_BASE_DIR, "engine")
+    if engine_dir not in sys.path:
+        sys.path.insert(0, engine_dir)
+    import build_ampr_index
+    sys.exit(build_ampr_index.main())
+elif len(sys.argv) > 1 and sys.argv[1] == "--internal-ampr-pack":
+    sys.argv.pop(1)
+    engine_dir = os.path.join(_BASE_DIR, "engine")
+    if engine_dir not in sys.path:
+        sys.path.insert(0, engine_dir)
+    import ampr_pack
+    sys.exit(ampr_pack.main())
+
 from compressor import compressor_manager
 
-STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+SERVER_DIR = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+STATIC_DIR = os.path.join(SERVER_DIR, "static")
 GITHUB_REPO = "foxhound1227/ps5pack_fnos"
 UPDATE_CACHE = {"timestamp": 0, "data": None}
 
-VERSION_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "version.txt")
+VERSION_FILE = os.path.join(SERVER_DIR, "version.txt")
 
 def get_app_version() -> str:
     """读取应用版本号：优先同级 server/version.txt，其次 fnOS /var/apps/ps5pack/manifest，再遍历父级目录"""
@@ -68,7 +86,7 @@ def get_app_version() -> str:
                 pass
         curr = os.path.dirname(curr)
 
-    return "1.2.5"
+    return "1.2.6"
 
 class AppRequestHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -262,6 +280,11 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             res = compressor_manager.stop_task()
             return self._send_json(res)
 
+        elif clean_path == "/api/pick_folder":
+            init_dir = post_data.get("initial", "")
+            picked = compressor_manager.pick_folder_native(init_dir)
+            return self._send_json({"success": True, "path": picked})
+
         self._send_json({"error": "Not Found"}, 404)
 
 class UnixThreadingHTTPServer(ThreadingHTTPServer):
@@ -293,16 +316,23 @@ def run_server(socket_path: Optional[str] = None, port: int = 8080):
     # TCP 端口模式
     server = ThreadingHTTPServer(("0.0.0.0", port), AppRequestHandler)
     print(f"[ps5pack] Listening on TCP http://0.0.0.0:{port}")
+    print(f"[ps5pack] 请在浏览器中访问: http://127.0.0.1:{port}")
     server.serve_forever()
 
 if __name__ == "__main__":
     raw_port = os.environ.get("TRIM_SERVICE_PORT", "").strip()
-    default_port = int(raw_port) if raw_port.isdigit() else 58888
+    if raw_port.isdigit():
+        default_port = int(raw_port)
+    elif os.name == "nt":
+        default_port = 8765
+    else:
+        default_port = 58888
 
     parser = argparse.ArgumentParser(description="PS5 AMPR LZ4 Compressor Service")
     parser.add_argument("--socket", type=str, default="", help="Unix domain socket path")
     parser.add_argument("--port", type=int, default=default_port, help="TCP port")
     parser.add_argument("--data", type=str, default="", help="Data directory")
+    parser.add_argument("--open-browser", action="store_true", help="Auto open default browser")
     args = parser.parse_args()
 
     # 优先环境变量
@@ -313,5 +343,17 @@ if __name__ == "__main__":
     if data_dir:
         compressor_manager.data_dir = data_dir
         compressor_manager.history_file = os.path.join(data_dir, "history.json")
+
+    # Windows 环境或开启 --open-browser 时自动在后台线程唤起浏览器
+    if (args.open_browser or os.name == "nt") and not socket_path:
+        import threading
+        import webbrowser
+        def _auto_open():
+            time.sleep(0.8)
+            try:
+                webbrowser.open(f"http://127.0.0.1:{port}")
+            except Exception:
+                pass
+        threading.Thread(target=_auto_open, daemon=True).start()
 
     run_server(socket_path=socket_path if socket_path else None, port=port)
